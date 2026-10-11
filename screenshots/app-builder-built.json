@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "AURORA",
+      "hasCanvas": false,
+      "bodyTextLen": 1799,
+      "bodyTextHash": "b5e2073ec71851ffdd88c777f1f6ddb094dc886a9ffd89106917d665056e42d6",
+      "bodyTextPrefix": "AURORA Mastering console Phase 1 measures the file, then runs a ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "AURORA",
+      "hasCanvas": false,
+      "bodyTextLen": 1799,
+      "bodyTextHash": "b5e2073ec71851ffdd88c777f1f6ddb094dc886a9ffd89106917d665056e42d6",
+      "bodyTextPrefix": "AURORA Mastering console Phase 1 measures the file, then runs a ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
