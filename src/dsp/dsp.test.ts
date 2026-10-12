@@ -15,6 +15,7 @@ import { limitStereo } from "./limiter.ts";
 import { measureLoudness } from "./lufs.ts";
 import { stereoCorrelation } from "./meters.ts";
 import { neutralParams } from "./presets.ts";
+import { renderClip } from "./render-clip.ts";
 import { saturateChannel, tapeNaive } from "./saturation.ts";
 import { measureTruePeak } from "./truepeak.ts";
 import { decodeWavHeader, decodeWavPcm, encodeWav } from "./wav.ts";
@@ -28,7 +29,7 @@ function sine(freq: number, seconds: number, amp: number, phase = 0): Float64Arr
   return y;
 }
 
-function rmsRange(x: Float64Array, from: number, to: number): number {
+function rmsRange(x: ArrayLike<number>, from: number, to: number): number {
   let s = 0;
   const a = Math.max(0, from);
   const b = Math.min(x.length, to);
@@ -445,5 +446,24 @@ describe("imaging, limiter, dither, wav, chain", () => {
     const db = 20 * Math.log10(rmsRange(rendered.l, 4000, x.length) / rmsRange(x, 4000, x.length));
     assert.ok(Math.abs(db) < 0.15, `moved ${db}`);
     assert.ok(rendered.report.truePeakOutDb < -1);
+  });
+
+  it("the low-memory render path matches the full-precision chain for a gain-only master", () => {
+    const x = sine(1000, 0.75, 0.25);
+    const params = neutralParams();
+    params.inputGainDb = -6;
+    const expected = renderChain({ l: x, r: x, sampleRate: SR }, params);
+    const outL = new Float32Array(x.length);
+    const outR = new Float32Array(x.length);
+    const report = renderClip(x, x, SR, params, outL, outR);
+
+    let maxError = 0;
+    for (let i = 0; i < x.length; i++) {
+      maxError = Math.max(maxError, Math.abs((outL[i] ?? 0) - (expected.l[i] ?? 0)));
+    }
+    assert.ok(maxError < 1e-6, `maximum sample error ${maxError}`);
+    assert.ok(Number.isFinite(report.integratedOut));
+    assert.equal(outL.length, x.length);
+    assert.equal(outR.length, x.length);
   });
 });

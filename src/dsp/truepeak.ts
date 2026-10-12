@@ -43,9 +43,7 @@ function interpAt(x: ArrayLike<number>, index: number, phase: number): number {
   const k = interpKernels()[phase];
   if (!k) return 0;
   let acc = 0;
-  const base = index - RADIUS;
   for (let i = 0; i < k.length; i++) {
-    const j = base + i + 1; // tap -16 lands on index-15? Let's derive.
     // tap = i - RADIUS, we want sample (index + tap) when phase offset is inside the kernel as (tap - d).
     // y = sum_tap x[index + tap] * sinc((tap) - d) with tap from -RADIUS .. RADIUS-1
     // i = tap + RADIUS, sample index = index + (i - RADIUS)

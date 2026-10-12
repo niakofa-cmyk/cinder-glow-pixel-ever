@@ -1,13 +1,13 @@
 import { analyze } from "./analyze.ts";
-import { renderChain } from "./chain.ts";
+import { renderClip } from "./render-clip.ts";
 import { suggest } from "./suggest.ts";
-import type { Analysis, ChainParams, Finding, ProcessReport, Stereo } from "./types.ts";
+import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "./types.ts";
 
 type FullRequest = {
   id: number;
   op: "full";
-  audio: Stereo;
-  reference: Stereo | null;
+  audio: Clip;
+  reference: Clip | null;
   params: ChainParams;
   targetLufs: number;
 };
@@ -15,17 +15,42 @@ type FullRequest = {
 type RenderRequest = {
   id: number;
   op: "render";
-  audio: Stereo;
+  audio: Clip;
   params: ChainParams;
 };
 
 type AnalyzeRequest = {
   id: number;
   op: "analyze";
-  audio: Stereo;
+  audio: Clip;
 };
 
 export type OfflineRequest = FullRequest | RenderRequest | AnalyzeRequest;
+type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
+export type OfflineCommand = WithoutId<OfflineRequest>;
+
+export type OfflineResponse =
+  | { id: number; op: "analyze"; analysis: Analysis }
+  | {
+      id: number;
+      op: "render";
+      l: Float32Array;
+      r: Float32Array;
+      sampleRate: number;
+      report: ProcessReport;
+    }
+  | {
+      id: number;
+      op: "full";
+      analysis: Analysis;
+      refAnalysis: Analysis | null;
+      findings: Finding[];
+      l: Float32Array;
+      r: Float32Array;
+      sampleRate: number;
+      report: ProcessReport;
+    }
+  | { id: number; op: "error"; message: string };
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<OfflineRequest>) => void) | null;
@@ -33,6 +58,13 @@ interface WorkerScope {
 }
 
 const scope = self as unknown as WorkerScope;
+
+function render(audio: Clip, params: ChainParams) {
+  const l = new Float32Array(audio.l.length);
+  const r = new Float32Array(audio.r.length);
+  const report = renderClip(audio.l, audio.r, audio.sampleRate, params, l, r);
+  return { l, r, sampleRate: audio.sampleRate, report };
+}
 
 scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
   const msg = event.data;
@@ -44,18 +76,18 @@ scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
       return;
     }
     if (msg.op === "render") {
-      const rendered = renderChain(msg.audio, msg.params);
+      const rendered = render(msg.audio, msg.params);
       scope.postMessage(
         { id: msg.id, op: "render" as const, l: rendered.l, r: rendered.r, sampleRate: rendered.sampleRate, report: rendered.report },
-        [rendered.l.buffer, rendered.r.buffer],
+        [rendered.l.buffer as ArrayBuffer, rendered.r.buffer as ArrayBuffer],
       );
       return;
     }
     const analysis = analyze(msg.audio.l, msg.audio.r, msg.audio.sampleRate);
     const refAnalysis = msg.reference ? analyze(msg.reference.l, msg.reference.r, msg.reference.sampleRate) : null;
     const findings = suggest(analysis, msg.targetLufs);
-    const rendered = renderChain(msg.audio, msg.params);
-    const result: FullResult = {
+    const rendered = render(msg.audio, msg.params);
+    const result: OfflineResponse = {
       id: msg.id,
       op: "full",
       analysis,
@@ -66,7 +98,7 @@ scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
       sampleRate: rendered.sampleRate,
       report: rendered.report,
     };
-    scope.postMessage(result, [rendered.l.buffer, rendered.r.buffer]);
+    scope.postMessage(result, [rendered.l.buffer as ArrayBuffer, rendered.r.buffer as ArrayBuffer]);
   } catch (error) {
     scope.postMessage({
       id: msg.id,
@@ -74,16 +106,4 @@ scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
       message: error instanceof Error ? error.message : "The file could not be measured.",
     });
   }
-};
-
-type FullResult = {
-  id: number;
-  op: "full";
-  analysis: Analysis;
-  refAnalysis: Analysis | null;
-  findings: Finding[];
-  l: Float64Array;
-  r: Float64Array;
-  sampleRate: number;
-  report: ProcessReport;
 };

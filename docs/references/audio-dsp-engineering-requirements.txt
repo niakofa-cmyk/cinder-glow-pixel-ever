@@ -1,0 +1,46 @@
+
+Act as an elite Senior Software Architect, Principal DSP (Digital Signal Processing) Engineer, and world-class Audio Mastering Engineer.
+
+Your objective is to design, architect, and write the foundational system layout and core processing algorithms for an ultra-dynamic, cutting-edge mixing and mastering software application. This software must bridge the gap between vintage analog warmth and flawless mathematical digital precision, creating a cohesive, crystal-clear, and harmonious soundstage across all playback systems.
+
+Implement the software using a highly efficient language suitable for real-time audio (e.g., C++ utilizing the JUCE framework, or highly optimized Rust).
+
+Adhere strictly to the following 5 multi-phase engineering requirements:
+
+### 1. Mathematical Architecture & Frequency Calibration
+
+Design an intelligent, adaptive multi-band crossover matrix utilizing linear-phase Linkwitz-Riley filters to prevent phase distortion.
+Program a dynamic frequency balancing engine that mathematically analyzes incoming signals for masking frequencies, harsh resonances, and clutter.
+Implement a continuous fast Fourier transform (FFT) analysis layer that maps sound frequencies to structural sound harmonics, micro-vibrations, and sonic "coloration" parameters.
+### 2. Analog Artifact Emulation & Digital Bridging (Hybrid DSP)
+
+Code an emulation engine capable of simulating non-linear harmonic distortion, tape saturation, and vacuum tube characteristics (mimicking hardware like the Fairchild 670, Pultec EQP-1A, and SSL G-Master Bus Compressor).
+Integrate oversampling algorithms (minimum 4x/8x) with high-quality polyphase anti-aliasing filters to completely eliminate digital inter-sample peaks and aliasing artifacts.
+Develop a transient-shaping algorithm that preserves the natural "snap" of acoustic instruments while allowing sub-bass frequencies to remain locked, tight, and dynamically stable.
+### 3. Orchestral Spatial Imaging & Multi-Speaker Translation
+
+Build an intelligent 3D spatial positioning matrix. Treat individual tracks like elements of an orchestra, dynamically carving out mid/side (M/S) matrix zones to give every vocal, instrument, rhythm, and melody its own isolated pocket while gluing them together cohesively.
+Program an automated mono-compatibility verification algorithm to guarantee that the dynamic range and stereo image remain flawlessly intact when translated across multiple speaker profiles (e.g., mono club systems, consumer headphones, smartphones, car audio, and studio monitors).
+### 4. Vocal and Instrumental Optimization
+
+Write an automated adaptive vocal chain script featuring precise automated de-essing, multi-stage compression (serial compression principles), and a forward-sounding mid-range presence algorithm for pristine vocal clarity.
+Construct dedicated algorithm variations specialized for acoustic instruments, percussive transients, and synthesized waveforms to maximize harmonic crispness without introducing phase cancellations.
+### 5. Code Optimization & Execution Protocol
+
+Ensure all audio thread operations are strictly lock-free, allocation-free, and optimized for SIMD (Single Instruction, Multiple Data) processing to maintain ultra-low latency.
+Provide a clean, componentized structural outline of the software architecture (classes, processing loops, and buffer management) followed by a fully realized, working code snippet demonstrating the core adaptive EQ/Saturation processing node.
+"You are a senior audio DSP engineer and mastering engineer. Help me build a mixing and mastering application in phases. Phase 1: design the architecture and signal chain. Use C++ with JUCE for the real-time engine, with Python (NumPy/SciPy/librosa) for prototyping and analysis.
+Requirements:
+Analysis: FFT spectrum, LUFS (ITU-R BS.1770), true peak, stereo correlation, crest factor, and spectral balance versus a reference track.
+EQ: linear-phase and minimum-phase modes, dynamic EQ, and mid/side processing.
+Dynamics: multiband compression, transparent limiting, de-essing, and transient shaping.
+Analog modeling: tape and tube saturation using waveshaping, harmonic generation, and oversampling to avoid aliasing.
+Vocal clarity: resonance suppression, de-essing, and presence-band balance.
+Translation: loudness targets for streaming platforms, plus checks against small speakers, headphones, and mono.
+Quality: 32-bit float processing, dithering, and no clipping or phase problems.
+For each module, explain the math, give tested code, and add unit tests. Start with Phase 1 only, then wait for my feedback."
+Tips to get better results:
+Build one module at a time (analysis first, then EQ, then compression, and so on), and test each with real audio.
+Feed it reference tracks. Matching your mix against professional masters is how you get a measurable target.
+Use your ears as the judge. No formula guarantees "the most harmonious sound." Mastering is partly subjective, so plan for adjustable presets and A/B comparison.
+Consider machine learning later, once the core DSP works, for things like automatic EQ matching or stem separation.
