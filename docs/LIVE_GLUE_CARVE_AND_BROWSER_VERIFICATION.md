@@ -46,17 +46,28 @@ Background WAV tests include both stages in all three bit depths.
 | Browser | Result | Scope |
 | --- | --- | --- |
 | Chromium 152 | **28 full checks passed** | Real worklet samples/meters, transport, six phase/channel combinations × three formats, new optical/carve controls and WAV samples, stale-print prevention, snapshots, persistence, mobile controls and recovery |
-| Firefox 157 / Playwright | **Blocked before app evaluation** | Browser launches after temporary Nix-library setup, but new page/content processes crash with SIGSEGV/ForkServer errors; helper loader and sandbox/fork-server alternatives did not resolve it |
-| Playwright Linux WebKit | **Blocked by runtime setup** | Initial host validation reported missing GTK/GStreamer/ICU and other libraries; temporary library/loader setup did not yield a working launch within the check timeout |
+| Hosted Playwright Chromium / Ubuntu | **28 full checks passed** | Same complete suite, including the new live models and matched prints |
+| Hosted Firefox 157 / Ubuntu | **28 full checks passed** | Same complete suite; a software PulseAudio sink allows actual headless Web Audio processing |
+| Hosted WebKit 27.2 / Ubuntu | **27 functional checks passed; final network audit failed** | Live models, transport, six phase/channel combinations × three formats, snapshots, storage-denial recovery and mobile controls passed. Seven source-module requests were recorded as failed; the final failed-request assertion remains red |
 | macOS Safari, iOS, physical devices | **Not tested** | Linux WebKit would not certify these devices even if its tests passed |
 
 Chromium measured live gain reduction and nonzero compressed output. New-model
 shared Float32 exports matched the engine fixture samples exactly; 16/24-bit
 exports matched within quantization/dither tolerances. Source audio stayed intact.
-No uncaught browser errors, failed requests or audio uploads in the completed run.
+No uncaught browser errors, failed requests or audio uploads in the completed
+Chromium and Firefox runs. WebKit's report recorded no console errors, but its
+failed-request audit is not clean and must not be waived or described as a fully
+passing suite.
 
-Generated browser evidence is excluded from Git. Failed runtime attempts are not
-app test failures, and must not be presented as Firefox/WebKit compatibility.
+Hosted evidence: [mastering checks](https://github.com/niakofa-cmyk/cinder-glow-pixel-ever/actions/runs/38291588926).
+Generated local evidence is excluded from Git. Firefox/WebKit remained unusable
+in the Nix container; their functional results above come from hosted Ubuntu,
+not from those failed local runtime attempts.
+
+Cross-browser checks exposed and drove fixes for WebKit native range dragging,
+explicit one-second PageUp/PageDown seeking, Firefox native form-state
+restoration before hydration, and portable storage-denial injection. Transport
+tests wait for worklet acknowledgements before a dependent seek.
 
 ## Reproducible checks and remaining work
 
@@ -76,12 +87,18 @@ to the browser child only; no Nix paths are hardcoded into the application.
 Playwright browsers and matching libraries must be provisioned on the test host.
 Temporary browser patches here are test-runtime setup, not application code.
 
-Next: run this same suite on a compatible Firefox/WebKit host, then actual Safari/
-iOS and other devices; listen for transition artifacts, measure underruns and
-end-to-end device latency, and profile long recordings and active-chain CPU.
+Next: investigate WebKit's seven failed source-module requests (wav, truepeak,
+meters, rt/engine, presets, fft and lufs). Capture failure reasons and navigation
+timing to distinguish genuine load failures from cancellations; do not blanket
+ignore failed requests. Then test actual Safari/iOS and other devices, listen for
+transition artifacts, measure underruns and device latency, and profile long
+recordings and active-chain CPU.
 
 The existing GitHub mastering workflow now has a hosted Ubuntu browser matrix
 for Chromium, Firefox and WebKit, with matching Playwright dependencies installed
 per job. Core checks run once before the matrix; browser failures do not cancel
 the other engines, and each uploads separate fixture evidence. Hosted results
-are pending until the pushed workflow completes, not counted in local totals.
+are recorded separately from local totals. Hosted CI uses
+`--no-editor-extensions` to replace only the optional external editor script
+with an empty response; application console errors remain checked. Synthetic
+fixtures only are used; no user music is uploaded.
