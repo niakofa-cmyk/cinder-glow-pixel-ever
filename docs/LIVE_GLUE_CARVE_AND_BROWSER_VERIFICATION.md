@@ -31,7 +31,7 @@ they do not record parameter automation, audition source, monitor or transport.
 
 ## Verification on 2026-10-12
 
-**397 automated tests passed**: 197 script, 144 core/workflow/quality, 56 real-time.
+**402 automated tests passed**: 202 script, 144 core/workflow/quality, 56 real-time.
 Strict type checking, lint and production build passed.
 
 New tests cover optical memory and carve parity in 1/37/128/1024-sample blocks,
@@ -48,18 +48,17 @@ Background WAV tests include both stages in all three bit depths.
 | Chromium 152 | **28 full checks passed** | Real worklet samples/meters, transport, six phase/channel combinations × three formats, new optical/carve controls and WAV samples, stale-print prevention, snapshots, persistence, mobile controls and recovery |
 | Hosted Playwright Chromium / Ubuntu | **28 full checks passed** | Same complete suite, including the new live models and matched prints |
 | Hosted Firefox 157 / Ubuntu | **28 full checks passed** | Same complete suite; a software PulseAudio sink allows actual headless Web Audio processing |
-| Hosted WebKit 27.2 / Ubuntu | **27 functional checks passed; final network audit failed** | Live models, transport, six phase/channel combinations × three formats, snapshots, storage-denial recovery and mobile controls passed. Seven source-module requests were recorded as failed; the final failed-request assertion remains red |
+| Hosted WebKit 27.2 / Ubuntu | **28 full checks passed** | Live models, transport, six phase/channel combinations × three formats, snapshots, storage-denial recovery, mobile controls and strict network audit passed |
 | macOS Safari, iOS, physical devices | **Not tested** | Linux WebKit would not certify these devices even if its tests passed |
 
 Chromium measured live gain reduction and nonzero compressed output. New-model
 shared Float32 exports matched the engine fixture samples exactly; 16/24-bit
 exports matched within quantization/dither tolerances. Source audio stayed intact.
 No uncaught browser errors, failed requests or audio uploads in the completed
-Chromium and Firefox runs. WebKit's report recorded no console errors, but its
-failed-request audit is not clean and must not be waived or described as a fully
-passing suite.
+Chromium, Firefox and WebKit runs. No cancellation exceptions or failed-request
+filters were introduced to make the audit pass.
 
-Hosted evidence: [mastering checks](https://github.com/niakofa-cmyk/cinder-glow-pixel-ever/actions/runs/38291588926).
+Hosted evidence: [mastering checks](https://github.com/niakofa-cmyk/cinder-glow-pixel-ever/actions/runs/38294645436).
 Generated local evidence is excluded from Git. Firefox/WebKit remained unusable
 in the Nix container; their functional results above come from hosted Ubuntu,
 not from those failed local runtime attempts.
@@ -68,6 +67,26 @@ Cross-browser checks exposed and drove fixes for WebKit native range dragging,
 explicit one-second PageUp/PageDown seeking, Firefox native form-state
 restoration before hydration, and portable storage-denial injection. Transport
 tests wait for worklet acknowledgements before a dependent seek.
+
+### Resolved WebKit source-module cancellations
+
+The earlier failed-request audit was investigated rather than waived. New
+diagnostics recorded exact error reasons, resource types, check names, request
+generation and reload timing. The requests were XHR module loads with WebKit's
+`Load request cancelled` error during processing changes, outside page reloads.
+The store was terminating the offline worker while its static imports loaded.
+
+The worker now sends a ready handshake only after all imports and its handler
+are installed. Requests wait in a startup queue; superseding settings reject
+and discard unstarted jobs while preserving module loading. Ready idle workers
+are reused. Active computation still terminates on cancellation, and worker
+errors force termination and reject pending work. Only the latest surviving
+queued work runs; original audio buffers remain copied before transfer.
+
+Regression tests cover deferred dispatch, superseded queued jobs, immediate
+dispatch after readiness and prevention of replay. Browser tests still verify
+stale-export cancellation and successful retry. The strict failed-request
+assertion remains unchanged; the final WebKit report has zero failed requests.
 
 ## Reproducible checks and remaining work
 
@@ -87,10 +106,7 @@ to the browser child only; no Nix paths are hardcoded into the application.
 Playwright browsers and matching libraries must be provisioned on the test host.
 Temporary browser patches here are test-runtime setup, not application code.
 
-Next: investigate WebKit's seven failed source-module requests (wav, truepeak,
-meters, rt/engine, presets, fft and lufs). Capture failure reasons and navigation
-timing to distinguish genuine load failures from cancellations; do not blanket
-ignore failed requests. Then test actual Safari/iOS and other devices, listen for
+Next: test actual Safari/iOS and other devices, listen for
 transition artifacts, measure underruns and device latency, and profile long
 recordings and active-chain CPU.
 
