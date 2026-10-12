@@ -15,6 +15,7 @@ export async function state(page) {
       matchLoudness: s.matchLoudness, targetLufs: s.targetLufs, moduleId: s.moduleId,
       savedAt: s.savedAt, storageBusy: s.storageBusy, storageError: s.storageError,
       storageNotice: s.storageNotice,
+      undoCount: s.undoCount, redoCount: s.redoCount,
     };
   });
 }
@@ -76,7 +77,7 @@ export function audioInstrumentation() {
     constructor(url, options) {
       super(url, options);
       this.addEventListener("message", event => {
-        if (event.data?.op === "shared-export" && window.__holdSharedExports) {
+        if (["shared-export", "encode-export"].includes(event.data?.op) && window.__holdSharedExports) {
           event.stopImmediatePropagation();
           window.__heldSharedExports.push({ worker: this, message: event.data });
         }

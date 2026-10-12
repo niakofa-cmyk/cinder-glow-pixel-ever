@@ -1,7 +1,7 @@
 import { analyze } from "./analyze.ts";
 import { renderOffline } from "./render-offline.ts";
 import { renderSharedClip } from "./rt/render.ts";
-import { encodeClipWav } from "./wav.ts";
+import { encodeVerifiedWav, type ExportQuality } from "./export-quality.ts";
 import { suggest } from "./suggest.ts";
 import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "./types.ts";
 
@@ -34,13 +34,14 @@ type SharedExportRequest = {
   params: ChainParams;
   bits: 16 | 24 | 32;
 };
+type EncodeExportRequest = { id: number; op: "encode-export"; audio: Clip; bits: 16 | 24 | 32 };
 
-export type OfflineRequest = FullRequest | RenderRequest | AnalyzeRequest | SharedExportRequest;
+export type OfflineRequest = FullRequest | RenderRequest | AnalyzeRequest | SharedExportRequest | EncodeExportRequest;
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 export type OfflineCommand = WithoutId<OfflineRequest>;
 
 export type OfflineResponse =
-  | { id: number; op: "shared-export"; buffer: ArrayBuffer }
+  | { id: number; op: "shared-export" | "encode-export"; buffer: ArrayBuffer; quality: ExportQuality }
   | { id: number; op: "analyze"; analysis: Analysis }
   | {
       id: number;
@@ -73,18 +74,10 @@ const scope = self as unknown as WorkerScope;
 scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
   const msg = event.data;
   try {
-    if (msg.op === "shared-export") {
-      const rendered = renderSharedClip(msg.audio, msg.params);
-      if (msg.bits !== 32) {
-        for (let i = 0; i < rendered.l.length; i++) {
-          if (Math.abs(rendered.l[i]!) >= 1 || Math.abs(rendered.r[i]!) >= 1) {
-            throw new Error("Shared output reaches 0 dBFS. Enable the limiter, reduce gain, or choose 32-float to avoid PCM clipping.");
-          }
-        }
-      }
-      const bytes = encodeClipWav([rendered.l, rendered.r], rendered.sampleRate, msg.bits);
-      const buffer = bytes.buffer as ArrayBuffer;
-      scope.postMessage({ id: msg.id, op: "shared-export", buffer }, [buffer]);
+    if (msg.op === "shared-export" || msg.op === "encode-export") {
+      const rendered = msg.op === "shared-export" ? renderSharedClip(msg.audio, msg.params) : msg.audio;
+      const { buffer, quality } = encodeVerifiedWav(rendered, msg.bits, msg.op === "shared-export" ? "shared" : "offline");
+      scope.postMessage({ id: msg.id, op: msg.op, buffer, quality }, [buffer]);
       return;
     }
     if (msg.op === "analyze") {

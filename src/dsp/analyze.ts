@@ -36,6 +36,16 @@ export function analyze(l: ArrayLike<number>, r: ArrayLike<number>, sampleRate: 
   const loud = measureLoudness([l, r], sampleRate);
   const peaks = measureTruePeak([l, r]);
   const spec = welchSpectrumDb(l, sampleRate, 8192, 4096);
+  // Average channel power, not waveforms: mono summing would hide anti-phase
+  // material, and inspecting only L would miss right-channel problems.
+  if (l !== r) {
+    const right = welchSpectrumDb(r, sampleRate, 8192, 4096);
+    for (let i = 0; i < spec.db.length; i++) {
+      // Welch floors amplitude at 1e-12, therefore power at 1e-24.
+      spec.db[i] = 10 * Math.log10(Math.max(1e-24,
+        (10 ** (spec.db[i]! / 10) + 10 ** (right.db[i]! / 10)) / 2));
+    }
+  }
   const thirds = thirdOctaveFromSpectrum(spec.db, spec.binHz, sampleRate);
   const rmsVal = Math.sqrt(0.5 * (rms(l) ** 2 + rms(r) ** 2));
   const peak = Math.max(peakAbs(l), peakAbs(r));

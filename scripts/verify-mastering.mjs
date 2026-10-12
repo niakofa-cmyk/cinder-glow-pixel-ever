@@ -6,6 +6,7 @@ import { fixture, makeFixtures, wavInfo } from "./browser/fixtures.mjs";
 import { audioInstrumentation, exported, importProgram, poll, ready, state } from "./browser/harness.mjs";
 import { checkSessions } from "./browser/session-checks.mjs";
 import { checkRealtime } from "./browser/realtime-checks.mjs";
+import { checkDocumentEnhancements } from "./browser/document-checks.mjs";
 
 const option = (name, fallback) => process.argv.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 const url = option("url", process.env.E2E_BASE_URL ?? "http://127.0.0.1:5000");
@@ -26,6 +27,13 @@ page.on("console", message => { if (message.type() === "error") errors.push(mess
 page.on("requestfailed", request => failedRequests.push(request.url()));
 page.on("request", request => { if (["POST", "PUT", "PATCH"].includes(request.method())) audioWrites.push(request.url()); });
 async function check(name, fn) {
+  if (process.argv.includes("--document-only") && ![
+    "Preview and demo render",
+    "Processing undo and redo restore actual exported audio",
+    "Changing settings cancels verified offline export and retry succeeds",
+    "Encoded quality report agrees with independent FFmpeg loudness and peak checks",
+    "No uncaught errors, failed requests, or audio uploads",
+  ].includes(name)) return;
   if (process.argv.includes("--live-only") && ![
     "Preview and demo render", "WAV program and reference import",
     "AudioWorklet produces real output, live meters and parameter updates",
@@ -154,6 +162,7 @@ try {
     await importProgram(page, files.program, "program.wav");
     await page.getByRole("button", { name: "Reset", exact: true }).click(); await ready(page);
   });
+  await checkDocumentEnhancements(page, files, check);
   await checkRealtime(page, files, check);
   await checkSessions(page, files, check);
   await check("Storage unavailable still opens demo with an explicit error", async () => {

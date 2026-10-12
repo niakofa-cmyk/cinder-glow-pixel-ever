@@ -33,6 +33,10 @@ These are the supplied source documents. They are preserved verbatim:
 2. [DSP and engineering requirements](./references/audio-dsp-engineering-requirements.txt)
 3. [Browser PWA architecture contract](./references/browser-pwa-architecture-contract.txt)
 
+The master prompt was resubmitted and verified byte-for-byte on 2026-10-12.
+See the [reference integrity index](references/README.md) and
+[assessment, completed improvements and remaining scope](MASTER_PROMPT_IMPLEMENTATION.md).
+
 The repository also contains the original product-vision attachment at
 [`attachments/pasted-text.txt`](../attachments/pasted-text.txt). The copies in
 `docs/references/` make all three current user-provided references easy to find
@@ -84,6 +88,9 @@ for controls, privacy/storage limits, commands, coverage, and remaining work.
   extreme sample rates, high peaks, limiter behavior, and multiband processing.
 - Validate exported WAV headers, encoding, true peak, and sample counts after
   each supported export format.
+- **Implemented:** both export paths verify the actual encoded payload before
+  download and expose measured before/after quality reports. Stereo spectral
+  analysis now includes both channels without mono cancellation.
 - Compare browser-rendered measurements with trusted reference implementations
   and document tolerances.
 - Profile memory and runtime using long-form and high-sample-rate material
@@ -91,9 +98,11 @@ for controls, privacy/storage limits, commands, coverage, and remaining work.
 
 ### 3. Improve everyday studio workflow
 
-- Add waveform seeking and transport position controls.
-- Add local project/session save, restore, and versioned session migration.
-- Add undo/redo and named processing snapshots for A/B comparisons.
+- **Implemented:** waveform seeking and transport position controls.
+- **Implemented:** versioned local project/session save, restore and confirmed
+  deletion. Migrations for future session formats remain future work.
+- **Implemented:** bounded processing undo/redo, buttons and keyboard shortcuts.
+  Named snapshots and drag-gesture grouping remain future work.
 - Explain sample-rate conversion and unsupported formats before import/export.
 - Keep source, reference, and processed playback states explicit.
 
@@ -107,9 +116,10 @@ for controls, privacy/storage limits, commands, coverage, and remaining work.
 
 ### 5. Evolve the real-time engine deliberately
 
-- Evaluate an AudioWorklet for responsive browser monitoring, with all
-  processing buffers preallocated and no unpredictable work in the audio
-  callback.
+- **Implemented:** opt-in AudioWorklet preview and explicit shared-engine WAV
+  exports alongside the established renderer. See
+  [real-time integration](REALTIME_ENGINE_INTEGRATION.md) for limitations.
+  Further callback profiling and allocation reduction remain ongoing work.
 - Treat native C++/JUCE or Rust audio-device support as a separate platform
   milestone, with packaging, latency, and licensing decisions documented first.
 - Share DSP behavior across engines only after numerical and listening tests

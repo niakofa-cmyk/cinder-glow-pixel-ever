@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Download, Pause, Play, Upload } from "lucide-react";
 import { neutralParams, presets } from "@/dsp/presets";
-import { encodeClipWav, decodeWavPcm } from "@/dsp/wav";
+import { decodeWavPcm } from "@/dsp/wav";
+import type { ExportEngine } from "@/dsp/export-quality";
 import type { Clip } from "@/dsp/types";
 import { balanceOf, playbackGainDb, useSession, type MonitorChoice, type SourceChoice } from "@/store/session";
 import { SpectrumPlot, Waveform } from "./Displays";
@@ -10,7 +11,8 @@ import { ModulePanel } from "./ModulePanel";
 import { SessionPanel } from "./SessionPanel";
 import { LiveMeters } from "./LiveMeters";
 import { useRealtimePreview } from "@/hooks/useRealtimePreview";
-import { renderSharedWav } from "@/store/session";
+import { renderVerifiedWav } from "@/store/session";
+import { ExportQualityPanel, type ExportAudit } from "./ExportQualityPanel";
 
 const MODULES: { id: string; name: string }[] = [
   { id: "map", name: "Signal chain" },
@@ -63,9 +65,23 @@ export function Studio() {
   const activeProgress = realtime ? rt.progress : progress;
   const [sharedExportBusy, setSharedExportBusy] = useState(false);
   const [sharedExportError, setSharedExportError] = useState<string | null>(null);
+  const [exportAudit, setExportAudit] = useState<ExportAudit | null>(null);
+  useEffect(() => { setExportAudit(null); }, [session.program, session.params]);
   const sharedExportLock = useRef(false);
   const sharedExportEpoch = useRef(0);
   useEffect(() => () => { sharedExportEpoch.current++; }, []);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('textarea,input:not([type="range"]),[contenteditable="true"]')) return;
+      const state = useSession.getState(), key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey && state.undoCount) { event.preventDefault(); state.undoParams(); }
+      else if ((key === "y" || (key === "z" && event.shiftKey)) && state.redoCount) { event.preventDefault(); state.redoParams(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const ctxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const rafRef = useRef(0);
@@ -223,24 +239,11 @@ export function Studio() {
     void takeFile(file, "program");
   };
 
-  const exportWav = (bits: 16 | 24 | 32) => {
-    const rendered = session.rendered;
-    if (!rendered) return;
-    const bytes = encodeClipWav([rendered.l, rendered.r], rendered.sampleRate, bits);
-    const copy = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(copy).set(bytes);
-    const blob = new Blob([copy], { type: "audio/wav" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = bits === 32 ? "aurora-master-32f.wav" : `aurora-master-${bits}.wav`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportShared = async (bits: 16 | 24 | 32) => {
+  const exportWav = async (bits: 16 | 24 | 32, engine: ExportEngine = "offline") => {
     const snapshot = useSession.getState();
     if (!snapshot.program || sharedExportLock.current) return;
+    const audio = engine === "shared" ? snapshot.program : snapshot.rendered;
+    if (!audio || (engine === "offline" && snapshot.busy)) return;
     const id = sharedExportEpoch.current;
     const settings = JSON.stringify(snapshot.params);
     sharedExportLock.current = true;
@@ -248,16 +251,23 @@ export function Studio() {
     setSharedExportError(null);
     try {
       const params = JSON.parse(settings) as typeof snapshot.params;
-      const buffer = await renderSharedWav(snapshot.program, params, bits);
+      const { buffer, quality } = await renderVerifiedWav(audio, params, bits, engine);
       if (id !== sharedExportEpoch.current) return;
       const current = useSession.getState();
       if (current.program !== snapshot.program || JSON.stringify(current.params) !== settings) {
-        throw new Error("Audio or settings changed during shared export. Export again to print the current settings.");
+        throw new Error(`Audio or settings changed during ${engine === "shared" ? "shared " : ""}export. Export again to print the current settings.`);
       }
+      const fileName = `${engine === "shared" ? "aurora-live-master" : "aurora-master"}-${bits === 32 ? "32f" : bits}.wav`;
+      const analysis = snapshot.analysis;
+      setExportAudit({ fileName, quality, params, targetLufs: snapshot.targetLufs, original: analysis ? {
+        integratedLufs: analysis.integratedLufs, truePeakDb: analysis.truePeakDb,
+        samplePeakDb: analysis.samplePeakDb, crestDb: analysis.crestDb,
+        correlation: analysis.correlation, rmsDb: analysis.rmsDb,
+      } : null });
       const url = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = bits === 32 ? "aurora-live-master-32f.wav" : `aurora-live-master-${bits}.wav`;
+      link.download = fileName;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -267,7 +277,7 @@ export function Studio() {
         const changed = current.program !== snapshot.program || JSON.stringify(current.params) !== settings
           || /Processing was (?:replaced|superseded)/.test(message);
         setSharedExportError(changed
-          ? "Audio or settings changed during shared export. Export again to print the current settings."
+          ? `Audio or settings changed during ${engine === "shared" ? "shared " : ""}export. Export again to print the current settings.`
           : message);
       }
     } finally {
@@ -311,12 +321,11 @@ export function Studio() {
                 {([24, 32, 16] as const).map(bits => <button key={bits} type="button"
                   className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40"
                   disabled={!session.program || !!rt.unsupported || sharedExportBusy}
-                  onClick={() => void exportShared(bits)}>
+                  onClick={() => void exportWav(bits, "shared")}>
                   {bits === 32 ? "Live-engine 32-float" : `Live-engine ${bits}-bit WAV`}
                 </button>)}
               </div>
-              {sharedExportBusy && <p role="status" className="mt-2 text-xs text-amber">Rendering shared-engine WAV in the background…</p>}
-              {sharedExportError && <p role="alert" className="mt-2 text-sm text-amber">{sharedExportError}</p>}
+              {sharedExportBusy && <p className="mt-2 text-xs text-amber">Encoding and verifying WAV in the background…</p>}
             </div>
             {rt.unsupported && <p role="alert" className="mt-2 text-sm text-amber">Use rendered playback for {rt.unsupported}. Live playback is paused rather than ignoring these controls.</p>}
             {rt.error && <p role="alert" className="mt-2 text-sm text-amber">{rt.error}</p>}
@@ -438,9 +447,12 @@ export function Studio() {
           <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm" onClick={() => session.setParams(neutralParams())}>
             Reset
           </button>
+          <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm disabled:opacity-40" disabled={!session.undoCount} title="Undo processing (Ctrl/Command Z)" onClick={session.undoParams}>Undo</button>
+          <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm disabled:opacity-40" disabled={!session.redoCount} title="Redo processing (Ctrl/Command Shift Z)" onClick={session.redoParams}>Redo</button>
         </div>
 
         <ModulePanel moduleId={session.moduleId} params={session.params} sampleRate={rate} onChange={session.setParams} />
+        <ExportQualityPanel audit={exportAudit} busy={sharedExportBusy} error={sharedExportError} />
 
         <section className="rounded-lg border border-line bg-surface p-4" aria-label="Findings">
           <h2 className="text-sm font-medium">What the measurements support</h2>
@@ -515,14 +527,14 @@ export function Studio() {
             Match loudness{session.matchLoudness && Math.abs(match) >= 0.05 ? ` ${match > 0 ? "+" : ""}${match.toFixed(1)} dB` : ""}
           </button>
           <span className="text-xs text-muted">Offline WAV</span>
-          <button type="button" className="inline-flex h-11 items-center gap-2 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered} onClick={() => exportWav(24)}>
+          <button type="button" className="inline-flex h-11 items-center gap-2 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(24)}>
             <Download className="size-4" aria-hidden="true" />
             24-bit WAV
           </button>
-          <button type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered} onClick={() => exportWav(32)}>
+          <button type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(32)}>
             32-float
           </button>
-          <button type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered} onClick={() => exportWav(16)}>
+          <button type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(16)}>
             16-bit
           </button>
         </div>

@@ -6,6 +6,8 @@ import { neutralParams } from "@/dsp/presets";
 import { applyPatch, suggest } from "@/dsp/suggest";
 import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "@/dsp/types";
 import { create } from "zustand";
+import type { ExportEngine, ExportQuality } from "../dsp/export-quality.ts";
+import { ParameterHistory } from "./parameter-history.ts";
 import type { SessionSnapshot } from "./session-snapshot";
 import { readLocalSession, removeLocalSession, storageMessage, writeLocalSession } from "./session-storage";
 
@@ -30,6 +32,8 @@ type Session = {
   matchLoudness: boolean;
   targetLufs: number;
   moduleId: string;
+  undoCount: number;
+  redoCount: number;
   savedAt: number | null;
   storageBusy: boolean;
   storageError: string | null;
@@ -42,7 +46,9 @@ type Session = {
   loadCalibration: () => void;
   loadProgram: (name: string, audio: Clip) => void;
   loadReference: (name: string, audio: Clip) => void;
-  setParams: (params: ChainParams) => void;
+  setParams: (params: ChainParams, recordHistory?: boolean) => void;
+  undoParams: () => void;
+  redoParams: () => void;
   patchParams: (patch: Partial<ChainParams>) => void;
   setSource: (source: SourceChoice) => void;
   setMonitor: (monitor: MonitorChoice) => void;
@@ -52,6 +58,11 @@ type Session = {
 };
 
 let job = 0;
+const parameterHistory = new ParameterHistory();
+function clearParameterHistory() {
+  parameterHistory.clear();
+  useSession.setState({ undoCount: 0, redoCount: 0 });
+}
 let requestId = 0;
 let offlineWorker: Worker | null = null;
 let storageJob = 0;
@@ -132,11 +143,17 @@ function copyForWorker(clip: Clip): Clip {
 
 /** Does not replace the established offline master or mutate/detach source audio. */
 export async function renderSharedWav(clip: Clip, params: ChainParams, bits: 16 | 24 | 32): Promise<ArrayBuffer> {
+  return (await renderVerifiedWav(clip, params, bits, "shared")).buffer;
+}
+
+export async function renderVerifiedWav(clip: Clip, params: ChainParams, bits: 16 | 24 | 32, engine: ExportEngine): Promise<{ buffer: ArrayBuffer; quality: ExportQuality }> {
   const audio = copyForWorker(clip);
-  const response = await runOffline({ op: "shared-export", audio, params, bits },
+  const command: OfflineCommand = engine === "shared"
+    ? { op: "shared-export", audio, params, bits } : { op: "encode-export", audio, bits };
+  const response = await runOffline(command,
     [audio.l.buffer as ArrayBuffer, audio.r.buffer as ArrayBuffer]);
-  if (response.op !== "shared-export") throw new Error("Background shared export returned incomplete data.");
-  return response.buffer;
+  if (response.op !== "shared-export" && response.op !== "encode-export") throw new Error("Background export returned incomplete data.");
+  return { buffer: response.buffer, quality: response.quality };
 }
 
 /** Keep analysis and offline rendering away from the browser's interactive thread. */
@@ -201,6 +218,8 @@ export const useSession = create<Session>((set, get) => ({
   rendered: null,
   report: null,
   findings: [],
+  undoCount: 0,
+  redoCount: 0,
   busy: null,
   error: null,
   source: "processed",
@@ -296,6 +315,7 @@ export const useSession = create<Session>((set, get) => ({
   },
 
   loadDemo: () => {
+    clearParameterHistory();
     const id = ++job;
     terminateOfflineWorker("Processing was replaced by a new program.");
     set({ busy: "Measuring the house program", error: null });
@@ -326,6 +346,7 @@ export const useSession = create<Session>((set, get) => ({
   },
 
   loadCalibration: () => {
+    clearParameterHistory();
     const id = ++job;
     terminateOfflineWorker("Processing was replaced by a calibration tone.");
     set({ busy: "Measuring the alignment tone", error: null });
@@ -355,6 +376,7 @@ export const useSession = create<Session>((set, get) => ({
   },
 
   loadProgram: (name, audio) => {
+    clearParameterHistory();
     const id = ++job;
     terminateOfflineWorker("Processing was replaced by a new program.");
     const previousRef = get().reference;
@@ -405,12 +427,17 @@ export const useSession = create<Session>((set, get) => ({
     master(id, program, get().params, true);
   },
 
-  setParams: (params) => {
+  setParams: (params, recordHistory = true) => {
+    const current = get().params;
+    if (JSON.stringify(current) === JSON.stringify(params)) return;
+    if (recordHistory) parameterHistory.record(current, params);
     const id = ++job;
     terminateOfflineWorker("Processing was superseded by a newer setting.");
     const program = get().program;
     set({
       params,
+      undoCount: parameterHistory.undoCount,
+      redoCount: parameterHistory.redoCount,
       busy: program ? "Rendering. Original can play." : null,
       rendered: program ? null : get().rendered,
       error: null,
@@ -424,6 +451,14 @@ export const useSession = create<Session>((set, get) => ({
     }, 40);
   },
 
+  undoParams: () => {
+    const next = parameterHistory.undo(get().params);
+    if (next) get().setParams(next, false);
+  },
+  redoParams: () => {
+    const next = parameterHistory.redo(get().params);
+    if (next) get().setParams(next, false);
+  },
   patchParams: (patch) => {
     const next = applyPatch(get().params, patch);
     get().setParams(next);
@@ -443,6 +478,7 @@ export const useSession = create<Session>((set, get) => ({
 }));
 
 function restoreSnapshot(snapshot: SessionSnapshot) {
+  clearParameterHistory();
   const id = ++job;
   terminateOfflineWorker("Processing was replaced by a restored session.");
   useSession.setState({
