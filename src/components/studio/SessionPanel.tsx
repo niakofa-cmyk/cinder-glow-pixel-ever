@@ -1,4 +1,5 @@
 import { useSession } from "@/store/session";
+import { nativeControlProps } from "./native-control";
 
 export function SessionPanel({ onRestore }: { onRestore: () => void }) {
   const s = useSession();
@@ -6,18 +7,18 @@ export function SessionPanel({ onRestore }: { onRestore: () => void }) {
   return (
     <section aria-label="Local session" className="rounded-md border border-line bg-surface/50 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={buttonClass} disabled={!s.program || !!s.busy || s.storageBusy}
+        <button {...nativeControlProps} type="button" className={buttonClass} disabled={!s.program || !!s.busy || s.storageBusy}
           onClick={() => {
             if (s.savedAt && !window.confirm("Replace the saved session in this browser with your current audio and settings?")) return;
             void s.saveLocal();
           }}>Save session</button>
-        <button type="button" className={buttonClass} disabled={!s.savedAt || !!s.busy || s.storageBusy}
+        <button {...nativeControlProps} type="button" className={buttonClass} disabled={!s.savedAt || !!s.busy || s.storageBusy}
           onClick={() => {
             if (!window.confirm("Restore the saved session? Unsaved audio and settings will be replaced.")) return;
             onRestore();
             void s.restoreLocal();
           }}>Restore session</button>
-        <button type="button" className={buttonClass} disabled={s.storageBusy || (!s.savedAt && !s.storageError)}
+        <button {...nativeControlProps} type="button" className={buttonClass} disabled={s.storageBusy || (!s.savedAt && !s.storageError)}
           onClick={() => {
             if (!window.confirm("Delete the saved session from this browser? Your current audio and settings will remain open.")) return;
             void s.deleteLocal();

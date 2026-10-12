@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/store/session";
+import { nativeControlProps } from "./native-control";
 import { MAX_PROCESSING_SNAPSHOTS } from "@/store/processing-snapshots";
 
 export function ProcessingSnapshotsPanel() {
@@ -22,11 +23,11 @@ export function ProcessingSnapshotsPanel() {
       if (ok) { setName(""); setEditing(null); }
     }}>
       <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-muted">Snapshot name
-        <input ref={input} type="text" value={name} required maxLength={80} disabled={disabled}
+        <input {...nativeControlProps} ref={input} type="text" value={name} required maxLength={80} disabled={disabled}
           placeholder="e.g. Clean baseline" onChange={event => setName(event.target.value)}
           className="h-11 rounded-md border border-line bg-bg px-3 text-sm text-fg" />
       </label>
-      <button type="submit" className={button} disabled={disabled || (!editing && bank.entries.length >= MAX_PROCESSING_SNAPSHOTS)}>
+      <button {...nativeControlProps} type="submit" className={button} disabled={disabled || (!editing && bank.entries.length >= MAX_PROCESSING_SNAPSHOTS)}>
         {editing ? "Save snapshot name" : "Capture snapshot"}
       </button>
       {editing && <button type="button" className={button} onClick={() => { setEditing(null); setName(""); }}>Cancel rename</button>}
@@ -37,13 +38,13 @@ export function ProcessingSnapshotsPanel() {
         const id = slot === "a" ? bank.aId : bank.bId;
         return <div key={slot} className="flex min-w-0 max-w-full flex-wrap items-end gap-2">
           <label className="flex min-w-0 max-w-full flex-col gap-1 text-xs text-muted">Snapshot {slot.toUpperCase()}
-            <select value={id ?? ""} disabled={disabled} className="h-11 max-w-full rounded-md bg-bg px-2 text-sm text-fg"
+            <select {...nativeControlProps} value={id ?? ""} disabled={disabled} className="h-11 max-w-full rounded-md bg-bg px-2 text-sm text-fg"
               onChange={event => session.assignProcessing(slot, event.target.value || null)}>
               <option value="">Not assigned</option>
               {bank.entries.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
-          <button type="button" className={button} disabled={disabled || !id} onClick={() => id && session.recallProcessing(id)}>Recall {slot.toUpperCase()}</button>
+          <button {...nativeControlProps} type="button" className={button} disabled={disabled || !id} onClick={() => id && session.recallProcessing(id)}>Recall {slot.toUpperCase()}</button>
         </div>;
       })}
     </div>

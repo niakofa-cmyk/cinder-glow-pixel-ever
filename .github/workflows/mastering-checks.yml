@@ -60,7 +60,7 @@ jobs:
             sleep 1
           done
           if [ "$ready" != true ]; then cat generated-artifacts/server.log; exit 1; fi
-          npm run test:browser -- --browser=${{ matrix.browser }}
+          npm run test:browser -- --browser=${{ matrix.browser }} --no-editor-extensions
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -25,6 +25,11 @@ const browser = await ({ chromium, firefox, webkit })[engine].launch({
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, acceptDownloads: true });
 await context.addInitScript(audioInstrumentation);
+if (process.argv.includes("--no-editor-extensions")) {
+  // Standalone CI tests the app, not the optional external editor integration.
+  await context.route("https://grok.com/grok-app-builder/extensions.js*", route =>
+    route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
+}
 const page = await context.newPage();
 const errors = [], failedRequests = [], audioWrites = [], results = [];
 page.on("pageerror", error => errors.push(error.message));

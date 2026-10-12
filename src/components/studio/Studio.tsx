@@ -14,6 +14,7 @@ import { useRealtimePreview } from "@/hooks/useRealtimePreview";
 import { renderVerifiedWav } from "@/store/session";
 import { ExportQualityPanel, type ExportAudit } from "./ExportQualityPanel";
 import { ProcessingSnapshotsPanel } from "./ProcessingSnapshotsPanel";
+import { nativeControlProps } from "./native-control";
 
 const MODULES: { id: string; name: string }[] = [
   { id: "map", name: "Signal chain" },
@@ -319,7 +320,7 @@ export function Studio() {
               <p className="text-sm font-medium">Shared-engine WAV</p>
               <p className="mt-1 text-xs text-muted">Prints the program with current fixed settings, with DSP latency removed. Compare using Processed, Full range and Match loudness off. Reference/original selection, monitor effects, pauses, seeks and automation are not printed. 16/24-bit adds dither; 32-float preserves sample values.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {([24, 32, 16] as const).map(bits => <button key={bits} type="button"
+                {([24, 32, 16] as const).map(bits => <button {...nativeControlProps} key={bits} type="button"
                   className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40"
                   disabled={!session.program || !!rt.unsupported || sharedExportBusy}
                   onClick={() => void exportWav(bits, "shared")}>
@@ -332,10 +333,16 @@ export function Studio() {
             {rt.error && <p role="alert" className="mt-2 text-sm text-amber">{rt.error}</p>}
             <label className="mt-3 flex items-center gap-3 text-xs text-muted">
               Seek
-              <input type="range" aria-label="Seek position" className="min-w-0 flex-1 accent-amber" min={0}
+              <input {...nativeControlProps} type="range" aria-label="Seek position" className="min-w-0 flex-1 accent-amber" min={0}
                 max={session.program ? session.program.l.length / session.program.sampleRate : 0} step={0.01}
                 value={activeProgress * (session.program ? session.program.l.length / session.program.sampleRate : 0)}
-                disabled={!rt.initialized} onChange={event => rt.seek(Number(event.target.value))} />
+                disabled={!rt.initialized} onChange={event => rt.seek(Number(event.target.value))}
+                onKeyDown={event => {
+                  if (event.key !== "PageUp" && event.key !== "PageDown") return;
+                  event.preventDefault();
+                  const length = session.program ? session.program.l.length / session.program.sampleRate : 0;
+                  rt.seek(Math.max(0, Math.min(length, Number(event.currentTarget.value) + (event.key === "PageUp" ? 1 : -1))));
+                }} />
             </label>
           </>}
         </section>
@@ -448,8 +455,8 @@ export function Studio() {
           <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm" onClick={() => session.setParams(neutralParams())}>
             Reset
           </button>
-          <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm disabled:opacity-40" disabled={!session.undoCount} title="Undo processing (Ctrl/Command Z)" onClick={session.undoParams}>Undo</button>
-          <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm disabled:opacity-40" disabled={!session.redoCount} title="Redo processing (Ctrl/Command Shift Z)" onClick={session.redoParams}>Redo</button>
+          <button {...nativeControlProps} type="button" className="h-11 rounded-md bg-surface px-3 text-sm disabled:opacity-40" disabled={!session.undoCount} title="Undo processing (Ctrl/Command Z)" onClick={session.undoParams}>Undo</button>
+          <button {...nativeControlProps} type="button" className="h-11 rounded-md bg-surface px-3 text-sm disabled:opacity-40" disabled={!session.redoCount} title="Redo processing (Ctrl/Command Shift Z)" onClick={session.redoParams}>Redo</button>
         </div>
 
         <ModulePanel moduleId={session.moduleId} params={session.params} sampleRate={rate} onChange={session.setParams}
@@ -497,7 +504,7 @@ export function Studio() {
           <button
             type="button"
             onClick={() => (activePlaying ? stop() : void play())}
-            disabled={!session.program || (realtime && !!rt.unsupported)}
+            {...nativeControlProps} disabled={!session.program || (realtime && !!rt.unsupported)}
             className="inline-flex h-11 items-center gap-2 rounded-md bg-amber px-4 text-sm font-medium text-ink disabled:opacity-40"
           >
             {activePlaying ? <Pause className="size-4" /> : <Play className="size-4" />}
@@ -530,14 +537,14 @@ export function Studio() {
             Match loudness{session.matchLoudness && Math.abs(match) >= 0.05 ? ` ${match > 0 ? "+" : ""}${match.toFixed(1)} dB` : ""}
           </button>
           <span className="text-xs text-muted">Offline WAV</span>
-          <button type="button" className="inline-flex h-11 items-center gap-2 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(24)}>
+          <button {...nativeControlProps} type="button" className="inline-flex h-11 items-center gap-2 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(24)}>
             <Download className="size-4" aria-hidden="true" />
             24-bit WAV
           </button>
-          <button type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(32)}>
+          <button {...nativeControlProps} type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(32)}>
             32-float
           </button>
-          <button type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(16)}>
+          <button {...nativeControlProps} type="button" className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered || !!session.busy || sharedExportBusy} onClick={() => void exportWav(16)}>
             16-bit
           </button>
         </div>
