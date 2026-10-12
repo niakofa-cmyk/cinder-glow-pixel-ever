@@ -1,0 +1,35 @@
+To push this studio platform beyond current market standards, implement the following advanced engineering practices directly into the repository structure:
+
+1. Migrate the Core Loop to AudioWorklets
+
+Standard React components or general main-thread audio execution handles processing with too much variance. To prevent UI stuttering from affecting audio performance, port the code inside src/dsp/ directly into an [AudioWorkletProcessor](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor). This moves the audio engine off the browser's main execution thread and onto a dedicated, high-priority real-time audio thread.
+typescript
+// Envisioned AudioWorklet wrapper pattern for src/dsp/
+class SaturationWorkletProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'drive', defaultValue: 1.0, minValue: 0.0, maxValue: 11.0 }];
+  }
+
+  process(inputs, outputs, parameters) {
+    const input = inputs[0];
+    const output = outputs[0];
+    
+    // Perform lock-free, zero-allocation processing natively per sample block
+    for (let channel = 0; channel < input.length; ++channel) {
+      const inputChannel = input[channel];
+      const outputChannel = output[channel];
+      // Run optimized inner non-linear transfer loops directly on raw Float32 arrays...
+    }
+    return true;
+  }
+}
+registerProcessor('saturation-processor', SaturationWorkletProcessor);
+Use code with caution.
+
+2. Implement WebAssembly (Wasm) Compilation for engine/
+
+Your native setup is designed for muscle. Compiling the C++ code files inside engine/ into a highly portable WebAssembly module via Emscripten allows the TypeScript frontend to pass raw pointers of Float32Array data buffers directly to compiled SIMD-optimized C++ assembly. This yields near-native execution performance inside a standard webpage.
+
+3. Enforce Strict SIMD Vectorization
+
+Modern browsers support 128-bit SIMD (Single Instruction, Multiple Data). This means your oversampling loops can process four audio samples simultaneously in a single CPU cycle, cutting your DSP processor's operational overhead by roughly 75%.

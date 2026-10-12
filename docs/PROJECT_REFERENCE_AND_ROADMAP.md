@@ -33,6 +33,7 @@ These are the supplied source documents. They are preserved verbatim:
 2. [DSP and engineering requirements](./references/audio-dsp-engineering-requirements.txt)
 3. [Browser PWA architecture contract](./references/browser-pwa-architecture-contract.txt)
 4. [Cinder Glow repository audit and roadmap](./references/cinder-glow-repository-audit-roadmap.txt)
+5. [AudioWorklet, Wasm and SIMD engineering notes](./references/audio-performance-engineering-notes.txt)
 
 The fourth reference is a historical architecture proposal, not a verified
 source-code audit. Its source was preserved byte-for-byte and assessed against
