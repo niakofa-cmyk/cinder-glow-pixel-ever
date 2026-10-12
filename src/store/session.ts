@@ -1,7 +1,7 @@
 import { spectralDelta } from "@/dsp/analyze";
 import { matchGainDb } from "@/dsp/chain";
 import { calibrationTone, makeDemo } from "@/dsp/demo";
-import type { OfflineCommand, OfflineResponse } from "@/dsp/offline.worker";
+import type { OfflineCommand, OfflineReady, OfflineResponse } from "@/dsp/offline.worker";
 import { neutralParams } from "@/dsp/presets";
 import { applyPatch, suggest } from "@/dsp/suggest";
 import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "@/dsp/types";
@@ -12,6 +12,7 @@ import { emptyProcessingBank, captureProcessingSnapshot, renameProcessingSnapsho
   deleteProcessingSnapshot, assignProcessingSlot, getProcessingSnapshot, type ProcessingBank } from "./processing-snapshots.ts";
 import type { SessionSnapshot } from "./session-snapshot";
 import { readLocalSession, removeLocalSession, storageMessage, writeLocalSession } from "./session-storage";
+import { WorkerStartup } from "./worker-startup.ts";
 
 export type SourceChoice = "original" | "processed" | "reference";
 export type MonitorChoice = "full" | "mono" | "small";
@@ -76,6 +77,7 @@ function clearParameterHistory() {
 }
 let requestId = 0;
 let offlineWorker: Worker | null = null;
+let workerStartup: WorkerStartup | null = null;
 let storageJob = 0;
 const pending = new Map<
   number,
@@ -103,9 +105,17 @@ function settlePending(error: Error) {
   pending.clear();
 }
 
-function terminateOfflineWorker(reason: string) {
+function terminateOfflineWorker(reason: string, force = false) {
+  workerStartup?.cancelQueued();
+  if (!force && offlineWorker && (!workerStartup?.ready || pending.size === 0)) {
+    // A queued job can be rejected without aborting loading imports. Reuse idle
+    // workers too; terminate only active computation or a genuinely failed worker.
+    settlePending(new Error(reason));
+    return;
+  }
   offlineWorker?.terminate();
   offlineWorker = null;
+  workerStartup = null;
   settlePending(new Error(reason));
 }
 
@@ -116,8 +126,12 @@ function getOfflineWorker(): Worker {
   if (offlineWorker) return offlineWorker;
 
   const worker = new Worker(new URL("../dsp/offline.worker.ts", import.meta.url), { type: "module" });
-  worker.onmessage = (event: MessageEvent<OfflineResponse>) => {
+  const startup = new WorkerStartup();
+  workerStartup = startup;
+  worker.onmessage = (event: MessageEvent<OfflineResponse | OfflineReady>) => {
+    if (worker !== offlineWorker) return;
     const response = event.data;
+    if (response.op === "ready") { startup.markReady(); return; }
     const task = pending.get(response.id);
     if (!task) return;
     pending.delete(response.id);
@@ -125,10 +139,10 @@ function getOfflineWorker(): Worker {
     else task.resolve(response);
   };
   worker.onerror = () => {
-    terminateOfflineWorker("Background audio processing stopped unexpectedly.");
+    if (worker === offlineWorker) terminateOfflineWorker("Background audio processing stopped unexpectedly.", true);
   };
   worker.onmessageerror = () => {
-    terminateOfflineWorker("The audio-processing worker returned unreadable data.");
+    if (worker === offlineWorker) terminateOfflineWorker("The audio-processing worker returned unreadable data.", true);
   };
   offlineWorker = worker;
   return worker;
@@ -139,12 +153,15 @@ function runOffline(command: OfflineCommand, transfer: Transferable[]): Promise<
   const id = ++requestId;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    try {
-      worker.postMessage({ ...command, id }, transfer);
-    } catch (error) {
-      pending.delete(id);
-      reject(error instanceof Error ? error : new Error("Audio processing could not start."));
-    }
+    workerStartup!.enqueue(() => {
+      if (worker !== offlineWorker || !pending.has(id)) return;
+      try {
+        worker.postMessage({ ...command, id }, transfer);
+      } catch (error) {
+        pending.delete(id);
+        reject(error instanceof Error ? error : new Error("Audio processing could not start."));
+      }
+    });
   });
 }
 

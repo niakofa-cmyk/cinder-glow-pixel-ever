@@ -39,6 +39,7 @@ type EncodeExportRequest = { id: number; op: "encode-export"; audio: Clip; bits:
 export type OfflineRequest = FullRequest | RenderRequest | AnalyzeRequest | SharedExportRequest | EncodeExportRequest;
 type WithoutId<T> = T extends { id: number } ? Omit<T, "id"> : never;
 export type OfflineCommand = WithoutId<OfflineRequest>;
+export type OfflineReady = { op: "ready" };
 
 export type OfflineResponse =
   | { id: number; op: "shared-export" | "encode-export"; buffer: ArrayBuffer; quality: ExportQuality }
@@ -118,3 +119,5 @@ scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
     });
   }
 };
+// All static DSP imports and the command handler are available before dispatch.
+scope.postMessage({ op: "ready" } satisfies OfflineReady);
