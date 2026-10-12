@@ -128,7 +128,77 @@ JSON output. The full suite passed 423 tests (223 script, 144 core/workflow, 56
 real-time); type checking, lint and production build also passed. The running
 studio preview was checked after the package-script update.
 
-Record baseline results below after a full run. Use evidence to choose a narrow
-optimization, then preserve source audio, phase/channel behavior, latency and
-actual shared-export parity. Wasm/SIMD remains an experiment until a compatible
-kernel demonstrates both numerical fidelity and a worthwhile measured benefit.
+Hosted Chromium, Firefox and WebKit also passed their full browser suites after
+the benchmark addition.
+[Passing hosted verification](https://github.com/niakofa-cmyk/cinder-glow-pixel-ever/actions/runs/38303737008).
+
+## Baseline — 2026-10-12
+
+The complete default run finished successfully on Linux x64, Node 24.13.0 /
+V8 13.6.233.17-node.37, Intel Xeon Platinum 8581C, four reported available
+processors, with explicit GC available. Container scheduling and quotas still
+affect results; this is not a physical studio-machine certification.
+
+Median **engine-only** factors, across three five-second trials:
+
+| Configuration | 48 kHz | 96 kHz |
+| --- | ---: | ---: |
+| Neutral | 25.21× | 12.73× |
+| Full minimum-phase | 5.22× | 2.64× |
+| Full linear-phase | 4.83× | 2.45× |
+| Linear without saturation | 12.63× | 7.16× |
+| Linear without multiband | 4.98× | 2.17× |
+| Linear without optical/carve | 5.08× | 2.24× |
+
+Full-linear median processing costs for five virtual seconds were 1,034.40 ms
+at 48 kHz and 2,040.14 ms at 96 kHz. Trial ranges were 1,012.21–1,205.68 ms
+and 1,911.57–2,170.11 ms respectively.
+
+Removing saturation reduced the comparative median cost by 61.7% / 65.8%.
+This makes saturation/oversampling the strongest **profiling candidate** in
+this run, not proof that a new saturation model or SIMD port would save that
+percentage while preserving its sound. Switching linear to minimum phase
+changed cost by about 7.4% / 7.1%.
+
+At 96 kHz, disabling multiband or optical/carve was slower than full-linear.
+Those negative deltas remain in the report. Small stage differences should not
+be treated as reliable isolated costs; use repeated runs and sampled stacks
+before choosing an optimization.
+
+### Sustained setting-change stress
+
+Both 300-second virtual-audio runs processed finite, non-silent audio, preserved
+source input, kept latency constant and reported no recovered non-finite values.
+Each performed 59 parameter changes.
+
+| Observation | 48 kHz | 96 kHz |
+| --- | ---: | ---: |
+| Processed blocks | 112,500 | 225,000 |
+| Engine-only factor | 4.98× | 2.50× |
+| p99 process-call time | 1.158 ms | 1.260 ms |
+| Maximum process-call time | 14.021 ms | 21.275 ms |
+| Calls above nominal block budget | 233 | 2,046 |
+| Maximum setting-update time | 2.583 ms | 0.261 ms |
+| Post-GC heap delta | +0.118 MiB | +0.055 MiB |
+| RSS delta | +2.25 MiB | +3.00 MiB |
+
+Nominal 128-frame durations are 2.667 ms / 1.333 ms. The outliers show why
+average throughput does not guarantee every real-time deadline. These are Node
+timing observations, **not measured browser dropouts**. Memory deltas are small
+in this experiment, but neither prove leak freedom nor cover full imported-song
+buffers or longer physical sessions.
+
+Raw JSON and a baseline CSV are stored in ignored
+`generated-artifacts/benchmarks/engine-baseline-2026-10-12.*`.
+The JSON contains full parameters, trials, timing distributions, memory samples,
+environment and caveats. Its SHA-256 is:
+
+```text
+ca171503dc2e47cbbd80d20694057db0a12d1ccdad437f1a8a2029380c7bb1f0
+```
+
+Next: profile the saturation/oversampling call stacks and browser worklet tail
+latency before a narrow optimization. Preserve source audio, phase/channel
+behavior, latency and actual shared-export parity. Wasm/SIMD remains an
+experiment until a compatible kernel demonstrates both numerical fidelity
+and a worthwhile measured benefit.
