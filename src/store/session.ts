@@ -277,11 +277,12 @@ export const useSession = create<Session>((set, get) => ({
   loadReference: (name, audio) => {
     const program = get().program;
     if (!program) {
-      set({ error: "Load a program before a reference." });
+      set({ busy: null, error: "Load a program before a reference." });
       return;
     }
     if (audio.sampleRate !== program.sampleRate) {
       set({
+        busy: null,
         error: `Reference is ${audio.sampleRate} Hz and the program is ${program.sampleRate} Hz. Balance comparison needs the same rate.`,
       });
       return;

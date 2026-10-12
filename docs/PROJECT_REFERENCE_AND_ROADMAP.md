@@ -68,7 +68,10 @@ implemented.
 - **Implemented:** analysis and rendering run through the offline Web Worker;
   source buffers are copied before transfer, and obsolete worker results are
   ignored when newer work replaces them.
-- Keep the lower-memory render path and verify it against DSP reference cases.
+- Keep the lower-memory render path where it preserves the requested processing.
+  Linear-phase EQ, mid/side EQ, and multiband rendering use the full chain rather
+  than substituting different processing. These modes require additional memory;
+  allocation failures are reported explicitly while the original remains available.
 - Add clear progress, cancellation, and recovery states for long renders.
 
 ### 2. Strengthen DSP and export verification

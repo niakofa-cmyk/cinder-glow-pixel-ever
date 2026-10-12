@@ -1,5 +1,5 @@
 import { analyze } from "./analyze.ts";
-import { renderClip } from "./render-clip.ts";
+import { renderOffline } from "./render-offline.ts";
 import { suggest } from "./suggest.ts";
 import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "./types.ts";
 
@@ -59,13 +59,6 @@ interface WorkerScope {
 
 const scope = self as unknown as WorkerScope;
 
-function render(audio: Clip, params: ChainParams) {
-  const l = new Float32Array(audio.l.length);
-  const r = new Float32Array(audio.r.length);
-  const report = renderClip(audio.l, audio.r, audio.sampleRate, params, l, r);
-  return { l, r, sampleRate: audio.sampleRate, report };
-}
-
 scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
   const msg = event.data;
   try {
@@ -76,7 +69,7 @@ scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
       return;
     }
     if (msg.op === "render") {
-      const rendered = render(msg.audio, msg.params);
+      const rendered = renderOffline(msg.audio, msg.params);
       scope.postMessage(
         { id: msg.id, op: "render" as const, l: rendered.l, r: rendered.r, sampleRate: rendered.sampleRate, report: rendered.report },
         [rendered.l.buffer as ArrayBuffer, rendered.r.buffer as ArrayBuffer],
@@ -86,7 +79,7 @@ scope.onmessage = (event: MessageEvent<OfflineRequest>) => {
     const analysis = analyze(msg.audio.l, msg.audio.r, msg.audio.sampleRate);
     const refAnalysis = msg.reference ? analyze(msg.reference.l, msg.reference.r, msg.reference.sampleRate) : null;
     const findings = suggest(analysis, msg.targetLufs);
-    const rendered = render(msg.audio, msg.params);
+    const rendered = renderOffline(msg.audio, msg.params);
     const result: OfflineResponse = {
       id: msg.id,
       op: "full",

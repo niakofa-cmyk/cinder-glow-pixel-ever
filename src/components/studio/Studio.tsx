@@ -265,7 +265,7 @@ export function Studio() {
             {session.program ? ` · ${(rate / 1000).toFixed(1)} kHz` : ""}
           </span>
           {session.busy && <span className="font-mono text-xs text-amber">{session.busy}</span>}
-          <span className="text-xs text-muted">WAV, MP3, FLAC, or AIFF. Drop a file anywhere on the console.</span>
+          <span className="text-xs text-muted">WAV recommended. MP3, FLAC, and other formats depend on browser support. Drop a file anywhere on the console.</span>
         </div>
 
         {session.error && (

@@ -150,6 +150,8 @@ export default defineConfig(({ command, isPreview }) => ({
     host: "0.0.0.0",
     port: 8080,
     strictPort: true,
+    // Replit Preview forwards requests using changing proxy hostnames.
+    allowedHosts: true,
   },
   preview: {
     host: "127.0.0.1",

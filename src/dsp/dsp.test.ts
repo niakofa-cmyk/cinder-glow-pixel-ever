@@ -16,6 +16,7 @@ import { measureLoudness } from "./lufs.ts";
 import { stereoCorrelation } from "./meters.ts";
 import { neutralParams } from "./presets.ts";
 import { renderClip } from "./render-clip.ts";
+import { renderOffline } from "./render-offline.ts";
 import { saturateChannel, tapeNaive } from "./saturation.ts";
 import { measureTruePeak } from "./truepeak.ts";
 import { decodeWavHeader, decodeWavPcm, encodeWav } from "./wav.ts";
@@ -465,5 +466,60 @@ describe("imaging, limiter, dither, wav, chain", () => {
     assert.ok(Number.isFinite(report.integratedOut));
     assert.equal(outL.length, x.length);
     assert.equal(outR.length, x.length);
+  });
+
+  it("offline rendering preserves linear-phase EQ instead of substituting minimum phase", () => {
+    const l = new Float32Array(sine(440, 0.25, 0.1));
+    const audio = { l, r: new Float32Array(l), sampleRate: SR };
+    const params = neutralParams();
+    params.bands = [{ id: "test", type: "peaking", freq: 440, gainDb: 6, q: 1, enabled: true }];
+    params.eqMode = "linear";
+    const actual = renderOffline(audio, params);
+    const expected = renderChain({ l: new Float64Array(l), r: new Float64Array(l), sampleRate: SR }, params);
+    const minimum = renderOffline(audio, { ...params, eqMode: "minimum" });
+    let modeDifference = 0;
+    for (let i = 0; i < l.length; i++) {
+      assert.ok(Math.abs((actual.l[i] ?? 0) - (expected.l[i] ?? 0)) < 1e-7);
+      modeDifference = Math.max(modeDifference, Math.abs((actual.l[i] ?? 0) - (minimum.l[i] ?? 0)));
+    }
+    assert.ok(modeDifference > 0.001, `phase modes unexpectedly identical: ${modeDifference}`);
+    assert.ok(actual.report.notes.some((note) => note.includes("forward-backward")));
+    assert.ok(!actual.report.notes.some((note) => note.includes("minimum-phase here")));
+  });
+
+  it("offline mid-only EQ does not modify a pure side signal", () => {
+    const l = new Float32Array(sine(440, 0.25, 0.1));
+    const r = Float32Array.from(l, (sample) => -sample);
+    const params = neutralParams();
+    params.eqTarget = "mid";
+    params.bands = [{ id: "test", type: "peaking", freq: 440, gainDb: 6, q: 1, enabled: true }];
+    const actual = renderOffline({ l, r, sampleRate: SR }, params);
+    assert.deepEqual(actual.l, l);
+    // Mid/side reconstruction may normalize -0 to +0; compare audio values.
+    for (let i = 0; i < r.length; i++) {
+      assert.ok(Math.abs((actual.r[i] ?? 0) - (r[i] ?? 0)) < 1e-7);
+    }
+  });
+
+  it("offline side-only EQ does not modify a pure mid signal", () => {
+    const l = new Float32Array(sine(440, 0.25, 0.1));
+    const params = neutralParams();
+    params.eqTarget = "side";
+    params.bands = [{ id: "test", type: "peaking", freq: 440, gainDb: 6, q: 1, enabled: true }];
+    const actual = renderOffline({ l, r: new Float32Array(l), sampleRate: SR }, params);
+    assert.deepEqual(actual.l, l);
+    assert.deepEqual(actual.r, l);
+  });
+
+  it("offline multiband rendering uses the full linear-phase crossover chain", () => {
+    const l = new Float32Array(sine(440, 0.25, 0.1));
+    const params = neutralParams();
+    params.multiband.enabled = true;
+    const actual = renderOffline({ l, r: new Float32Array(l), sampleRate: SR }, params);
+    const expected = renderChain({ l: new Float64Array(l), r: new Float64Array(l), sampleRate: SR }, params);
+    assert.deepEqual(actual.l, new Float32Array(expected.l));
+    assert.deepEqual(actual.r, new Float32Array(expected.r));
+    assert.ok(actual.report.notes.some((note) => note.includes("linear-phase Linkwitz")));
+    assert.ok(!actual.report.notes.some((note) => note.includes("on a long file")));
   });
 });
