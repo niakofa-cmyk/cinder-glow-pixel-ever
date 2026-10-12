@@ -2,6 +2,10 @@ import { eqCurveDb } from "@/dsp/eq";
 import { bandIsActive } from "@/dsp/eq";
 import type { ChainParams, EqBand } from "@/dsp/types";
 import { EqCurve } from "./Displays";
+import { createContext, useContext, useEffect, useRef } from "react";
+
+const GestureContext = createContext<{ begin: () => number; end: (token: number) => void }>({ begin: () => 0, end: () => undefined });
+const RANGE_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
 
 function Knob({
   label,
@@ -20,6 +24,11 @@ function Knob({
   unit: string;
   onChange: (value: number) => void;
 }) {
+  const { begin, end } = useContext(GestureContext);
+  const token = useRef<number | null>(null);
+  const start = () => { if (token.current === null) token.current = begin(); };
+  const finish = () => { if (token.current !== null) { end(token.current); token.current = null; } };
+  useEffect(() => () => { if (token.current !== null) { end(token.current); token.current = null; } }, [end]);
   const shown = Number.isInteger(step) ? value.toFixed(0) : value.toFixed(step < 0.1 ? 2 : 1);
   return (
     <label className="flex min-w-0 flex-col gap-1">
@@ -37,6 +46,18 @@ function Knob({
         step={step}
         value={value}
         aria-label={label}
+        onPointerDown={(event) => {
+          start();
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerUp={finish}
+        onPointerCancel={finish}
+        onLostPointerCapture={finish}
+        onBlur={finish}
+        onKeyDown={(event) => {
+          if (!event.ctrlKey && !event.metaKey && !event.altKey && RANGE_KEYS.has(event.key)) start();
+        }}
+        onKeyUp={(event) => { if (RANGE_KEYS.has(event.key)) finish(); }}
         onChange={(event) => onChange(Number(event.target.value))}
       />
     </label>
@@ -70,7 +91,15 @@ const MATH: Record<string, string> = {
   limiter: "Lookahead true-peak limiter. The detector is a 4× sinc peak. Gain falls immediately and releases with a one-pole. A signal under the ceiling is bit-identical.",
 };
 
-export function ModulePanel({
+export function ModulePanel(props: Parameters<typeof ModuleControls>[0] & {
+  beginGesture: () => number; endGesture: (token: number) => void;
+}) {
+  return <GestureContext.Provider value={{ begin: props.beginGesture, end: props.endGesture }}>
+    <ModuleControls {...props} />
+  </GestureContext.Provider>;
+}
+
+function ModuleControls({
   moduleId,
   params,
   sampleRate,

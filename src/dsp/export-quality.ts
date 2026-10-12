@@ -88,7 +88,7 @@ export function verifyEncodedWav(bytes: Uint8Array, expected: Clip, bits: 16 | 2
 
 export function encodeVerifiedWav(clip: Clip, bits: 16 | 24 | 32, engine: ExportEngine) {
   if (![16, 24, 32].includes(bits) || !clip.l.length || clip.l.length !== clip.r.length
-    || !Number.isInteger(clip.sampleRate) || clip.sampleRate < 8000 || clip.sampleRate > 192000)
+    || !Number.isInteger(clip.sampleRate) || clip.sampleRate < 8000 || clip.sampleRate > 384000)
     throw new Error("Cannot export invalid channel lengths, bit depth or sample rate.");
   for (let i = 0; i < clip.l.length; i++) {
     const l = clip.l[i]!, r = clip.r[i]!;

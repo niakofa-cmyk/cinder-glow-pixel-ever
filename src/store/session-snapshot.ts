@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ChainParams, Clip } from "../dsp/types.ts";
+import type { ProcessingBank } from "./processing-snapshots.ts";
 
 const number = (min: number, max: number) => z.number().finite().min(min).max(max);
 const frequency = number(10, 192000);
@@ -41,6 +42,21 @@ const paramsSchema: z.ZodType<ChainParams> = z.object({
   }),
 });
 
+export function parseChainParams(value: unknown): ChainParams {
+  const result = paramsSchema.safeParse(value);
+  if (!result.success) throw new Error("Processing settings are invalid or unsupported.");
+  return result.data;
+}
+const processingBankSchema: z.ZodType<ProcessingBank> = z.object({
+  entries: z.array(z.object({ id: z.string().min(1).max(64), name: z.string().trim().min(1).max(80), params: paramsSchema })).max(8),
+  aId: z.string().min(1).max(64).nullable(), bId: z.string().min(1).max(64).nullable(),
+}).refine(bank => {
+  const ids = bank.entries.map(s => s.id), names = bank.entries.map(s => s.name.toLowerCase());
+  return new Set(ids).size === ids.length && new Set(names).size === names.length
+    && (!bank.aId || ids.includes(bank.aId)) && (!bank.bId || ids.includes(bank.bId))
+    && (!bank.aId || bank.aId !== bank.bId);
+});
+
 function isClip(value: unknown): value is Clip {
   if (!value || typeof value !== "object") return false;
   const clip = value as Clip;
@@ -58,6 +74,7 @@ const snapshotSchema = z.object({
   program: z.custom<Clip>(isClip), reference: z.custom<Clip>(isClip).nullable(),
   programName: z.string().min(1).max(512), referenceName: z.string().max(512),
   params: paramsSchema,
+  processingBank: processingBankSchema.optional(),
   source: z.enum(["original", "processed", "reference"]),
   monitor: z.enum(["full", "mono", "small"]), matchLoudness: z.boolean(),
   targetLufs: number(-36, -5),

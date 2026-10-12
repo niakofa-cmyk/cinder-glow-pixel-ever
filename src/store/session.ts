@@ -8,6 +8,8 @@ import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "@/dsp/
 import { create } from "zustand";
 import type { ExportEngine, ExportQuality } from "../dsp/export-quality.ts";
 import { ParameterHistory } from "./parameter-history.ts";
+import { emptyProcessingBank, captureProcessingSnapshot, renameProcessingSnapshot,
+  deleteProcessingSnapshot, assignProcessingSlot, getProcessingSnapshot, type ProcessingBank } from "./processing-snapshots.ts";
 import type { SessionSnapshot } from "./session-snapshot";
 import { readLocalSession, removeLocalSession, storageMessage, writeLocalSession } from "./session-storage";
 
@@ -34,6 +36,8 @@ type Session = {
   moduleId: string;
   undoCount: number;
   redoCount: number;
+  processingBank: ProcessingBank;
+  snapshotError: string | null;
   savedAt: number | null;
   storageBusy: boolean;
   storageError: string | null;
@@ -49,6 +53,13 @@ type Session = {
   setParams: (params: ChainParams, recordHistory?: boolean) => void;
   undoParams: () => void;
   redoParams: () => void;
+  beginParamsGesture: () => number;
+  endParamsGesture: (token?: number) => void;
+  captureProcessing: (name: string) => boolean;
+  renameProcessing: (id: string, name: string) => boolean;
+  deleteProcessing: (id: string) => boolean;
+  assignProcessing: (slot: "a" | "b", id: string | null) => boolean;
+  recallProcessing: (id: string) => boolean;
   patchParams: (patch: Partial<ChainParams>) => void;
   setSource: (source: SourceChoice) => void;
   setMonitor: (monitor: MonitorChoice) => void;
@@ -61,7 +72,7 @@ let job = 0;
 const parameterHistory = new ParameterHistory();
 function clearParameterHistory() {
   parameterHistory.clear();
-  useSession.setState({ undoCount: 0, redoCount: 0 });
+  useSession.setState({ undoCount: 0, redoCount: 0, processingBank: emptyProcessingBank(), snapshotError: null });
 }
 let requestId = 0;
 let offlineWorker: Worker | null = null;
@@ -220,6 +231,8 @@ export const useSession = create<Session>((set, get) => ({
   findings: [],
   undoCount: 0,
   redoCount: 0,
+  processingBank: emptyProcessingBank(),
+  snapshotError: null,
   busy: null,
   error: null,
   source: "processed",
@@ -266,6 +279,7 @@ export const useSession = create<Session>((set, get) => ({
       params: state.params, source: state.source, monitor: state.monitor,
       matchLoudness: state.matchLoudness, targetLufs: state.targetLufs,
       moduleId: state.moduleId as SessionSnapshot["moduleId"],
+      processingBank: state.processingBank,
     };
     set({ storageBusy: true, storageError: null, storageNotice: null });
     try {
@@ -459,6 +473,46 @@ export const useSession = create<Session>((set, get) => ({
     const next = parameterHistory.redo(get().params);
     if (next) get().setParams(next, false);
   },
+  beginParamsGesture: () => parameterHistory.beginGesture(get().params),
+  endParamsGesture: (token) => {
+    parameterHistory.endGesture(get().params, token);
+    set({ undoCount: parameterHistory.undoCount, redoCount: parameterHistory.redoCount });
+  },
+  captureProcessing: (name) => {
+    try {
+      get().endParamsGesture();
+      const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      set({ processingBank: captureProcessingSnapshot(get().processingBank, name, get().params, id), snapshotError: null });
+      return true;
+    } catch (error) { set({ snapshotError: (error as Error).message }); return false; }
+  },
+  renameProcessing: (id, name) => {
+    try {
+      set({ processingBank: renameProcessingSnapshot(get().processingBank, id, name), snapshotError: null });
+      return true;
+    } catch (error) { set({ snapshotError: (error as Error).message }); return false; }
+  },
+  deleteProcessing: (id) => {
+    try {
+      set({ processingBank: deleteProcessingSnapshot(get().processingBank, id), snapshotError: null });
+      return true;
+    } catch (error) { set({ snapshotError: (error as Error).message }); return false; }
+  },
+  assignProcessing: (slot, id) => {
+    try {
+      set({ processingBank: assignProcessingSlot(get().processingBank, slot, id), snapshotError: null });
+      return true;
+    } catch (error) { set({ snapshotError: (error as Error).message }); return false; }
+  },
+  recallProcessing: (id) => {
+    try {
+      const entry = getProcessingSnapshot(get().processingBank, id);
+      get().endParamsGesture();
+      get().setParams(entry.params);
+      set({ source: "processed", snapshotError: null });
+      return true;
+    } catch (error) { set({ snapshotError: (error as Error).message }); return false; }
+  },
   patchParams: (patch) => {
     const next = applyPatch(get().params, patch);
     get().setParams(next);
@@ -485,6 +539,7 @@ function restoreSnapshot(snapshot: SessionSnapshot) {
     program: snapshot.program, reference: snapshot.reference,
     programName: snapshot.programName, referenceName: snapshot.referenceName,
     params: snapshot.params, source: snapshot.source, monitor: snapshot.monitor,
+    processingBank: snapshot.processingBank ?? emptyProcessingBank(), snapshotError: null,
     matchLoudness: snapshot.matchLoudness, targetLufs: snapshot.targetLufs,
     moduleId: snapshot.moduleId, savedAt: snapshot.savedAt,
     analysis: null, refAnalysis: null, rendered: null, report: null, findings: [],

@@ -47,4 +47,25 @@ describe("saved session validation", () => {
     s.params = neutralParams(); s.params.multiband.lowHz = 10000;
     assert.throws(() => parseSnapshot(s), /corrupt/);
   });
+  it("keeps older sessions compatible and round-trips optional snapshot settings", () => {
+    assert.equal(parseSnapshot(snapshot()).processingBank, undefined);
+    const s = snapshot();
+    s.processingBank = { entries: [{ id: "a", name: "Baseline", params: neutralParams() }], aId: "a", bId: null };
+    const parsed = parseSnapshot(structuredClone(s));
+    assert.deepEqual(parsed.processingBank, s.processingBank);
+  });
+  it("rejects corrupt snapshot slots, names, settings and excessive banks", () => {
+    const s = snapshot();
+    s.processingBank = { entries: [{ id: "a", name: "Baseline", params: neutralParams() }], aId: "missing", bId: null };
+    assert.throws(() => parseSnapshot(s), /corrupt/);
+    s.processingBank.aId = "a"; s.processingBank.bId = "a";
+    assert.throws(() => parseSnapshot(s), /corrupt/);
+    s.processingBank.bId = null;
+    s.processingBank.entries.push({ id: "b", name: " baseline ", params: neutralParams() });
+    assert.throws(() => parseSnapshot(s), /corrupt/);
+    s.processingBank.entries.pop(); s.processingBank.entries[0]!.params.width = NaN;
+    assert.throws(() => parseSnapshot(s), /corrupt/);
+    s.processingBank.entries = Array.from({ length: 9 }, (_, i) => ({ id: `${i}`, name: `Take ${i}`, params: neutralParams() }));
+    assert.throws(() => parseSnapshot(s), /corrupt/);
+  });
 });

@@ -13,6 +13,7 @@ import { LiveMeters } from "./LiveMeters";
 import { useRealtimePreview } from "@/hooks/useRealtimePreview";
 import { renderVerifiedWav } from "@/store/session";
 import { ExportQualityPanel, type ExportAudit } from "./ExportQualityPanel";
+import { ProcessingSnapshotsPanel } from "./ProcessingSnapshotsPanel";
 
 const MODULES: { id: string; name: string }[] = [
   { id: "map", name: "Signal chain" },
@@ -451,7 +452,9 @@ export function Studio() {
           <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm disabled:opacity-40" disabled={!session.redoCount} title="Redo processing (Ctrl/Command Shift Z)" onClick={session.redoParams}>Redo</button>
         </div>
 
-        <ModulePanel moduleId={session.moduleId} params={session.params} sampleRate={rate} onChange={session.setParams} />
+        <ModulePanel moduleId={session.moduleId} params={session.params} sampleRate={rate} onChange={session.setParams}
+          beginGesture={session.beginParamsGesture} endGesture={session.endParamsGesture} />
+        <ProcessingSnapshotsPanel />
         <ExportQualityPanel audit={exportAudit} busy={sharedExportBusy} error={sharedExportError} />
 
         <section className="rounded-lg border border-line bg-surface p-4" aria-label="Findings">

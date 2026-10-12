@@ -92,9 +92,11 @@ Buttons and Ctrl/Command Z, Shift Z / Ctrl Y shortcuts are available. Text input
 is excluded. No-op updates do not rerender or create history. New edits clear redo;
 new program/demo/calibration and restored sessions clear old history.
 
-History is session-local and is not persisted. Each accepted parameter update
-is a history step; drag gesture grouping and named A/B snapshots remain future
-work. Monitoring/source choice and target preferences are not processing history.
+History is session-local and is not persisted. At this initial stage each accepted
+parameter update was a history step. The subsequent
+[workflow enhancement](NAMED_PROCESSING_SNAPSHOTS.md) adds gesture grouping and
+named A/B snapshots. Monitoring/source choice and target preferences are not
+processing history.
 
 ## Verification
 
@@ -155,8 +157,9 @@ Physical devices, subjective listening and Safari/Firefox remain unverified.
 
 ## Next priorities
 
-1. Persist named processing A/B snapshots and group parameter drags into single
-   undo transactions without changing DSP or source buffers.
+1. **Completed in the subsequent workflow enhancement:** persist named processing
+   A/B snapshots and group parameter drags into single undo transactions without
+   changing DSP or source buffers. Blind comparisons remain future work.
 2. Profile long/high-rate files and verification runtime/memory before changing
    supported limits; verify Safari/Firefox, interruptions and real devices.
 3. Extend supported live optical/center processing only after golden signal tests.

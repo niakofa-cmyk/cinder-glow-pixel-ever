@@ -16,6 +16,7 @@ export async function state(page) {
       savedAt: s.savedAt, storageBusy: s.storageBusy, storageError: s.storageError,
       storageNotice: s.storageNotice,
       undoCount: s.undoCount, redoCount: s.redoCount,
+      processingBank: s.processingBank, snapshotError: s.snapshotError,
     };
   });
 }

@@ -11,6 +11,12 @@ function tone(rate = 48000, seconds = 0.45): Clip {
   for (let i = 0; i < l.length; i++) { l[i] = 0.1 * Math.sin(2 * Math.PI * 1000 * i / rate); r[i] = l[i]! * 0.8; }
   return { l, r, sampleRate: rate };
 }
+it("verified export preserves the existing 384 kHz native-rate session range", () => {
+  const clip = tone(384000, 0.05), { buffer, quality } = encodeVerifiedWav(clip, 24, "offline");
+  assert.equal(quality.format.sampleRate, 384000);
+  assert.equal(decodeWavPcm(new Uint8Array(buffer))!.sampleRate, 384000);
+  assert.equal(quality.format.frames, clip.l.length);
+});
 for (const rate of [44100, 48000, 88200, 96000, 176400, 192000]) {
   for (const bits of [16, 24, 32] as const) {
     it(`verifies actual ${bits}-bit/${rate} Hz payload and matches reopened measurements`, () => {

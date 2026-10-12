@@ -102,7 +102,8 @@ for controls, privacy/storage limits, commands, coverage, and remaining work.
 - **Implemented:** versioned local project/session save, restore and confirmed
   deletion. Migrations for future session formats remain future work.
 - **Implemented:** bounded processing undo/redo, buttons and keyboard shortcuts.
-  Named snapshots and drag-gesture grouping remain future work.
+  [Named processing A/B snapshots and drag/held-key grouping](NAMED_PROCESSING_SNAPSHOTS.md)
+  are now implemented, including optional local-session persistence.
 - Explain sample-rate conversion and unsupported formats before import/export.
 - Keep source, reference, and processed playback states explicit.
 

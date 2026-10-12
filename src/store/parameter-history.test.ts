@@ -33,3 +33,41 @@ it("new edits invalidate redo and history is bounded and clearable", () => {
   history.record(b, d); assert.equal(history.redo(d), null);
   history.clear(); assert.equal(history.undoCount, 0); assert.equal(history.redoCount, 0);
 });
+
+it("a continuous gesture is one undo step while intermediate settings stay live", () => {
+  const history = new ParameterHistory(), a = neutralParams();
+  const token = history.beginGesture(a);
+  let current = a;
+  for (let gain = 1; gain <= 10; gain++) {
+    const next = { ...a, inputGainDb: gain };
+    history.record(current, next); current = next;
+    assert.equal(history.undoCount, 1);
+  }
+  history.endGesture(current, token);
+  assert.deepEqual(history.undo(current), a);
+  assert.deepEqual(history.redo(a), current);
+});
+it("net-zero gestures preserve redo and create no undo step", () => {
+  const history = new ParameterHistory(), a = neutralParams(), b = { ...a, inputGainDb: 3 };
+  history.record(a, b); history.undo(b);
+  const token = history.beginGesture(a);
+  history.record(a, b); assert.equal(history.redoCount, 0);
+  history.record(b, a); history.endGesture(a, token);
+  assert.equal(history.undoCount, 0); assert.equal(history.redoCount, 1);
+  assert.deepEqual(history.redo(a), b);
+});
+it("undo during a gesture commits it first and stale end events cannot close a newer gesture", () => {
+  const history = new ParameterHistory(), a = neutralParams(), b = { ...a, inputGainDb: 2 };
+  const old = history.beginGesture(a); history.record(a, b);
+  assert.deepEqual(history.undo(b), a);
+  const next = history.beginGesture(a); history.record(a, b);
+  assert.equal(history.endGesture(b, old), false);
+  assert.equal(history.endGesture(b, next), true);
+  assert.deepEqual(history.undo(b), a);
+});
+it("clear discards an active gesture and its late pointer event", () => {
+  const history = new ParameterHistory(), a = neutralParams();
+  const old = history.beginGesture(a); history.record(a, { ...a, inputGainDb: 5 });
+  history.clear();
+  assert.equal(history.endGesture(a, old), false); assert.equal(history.undoCount, 0);
+});
