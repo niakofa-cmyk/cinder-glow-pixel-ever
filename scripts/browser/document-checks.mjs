@@ -43,7 +43,7 @@ export async function checkDocumentEnhancements(page, files, check) {
     assert.equal(review.criteria.ceilingDb, audit.params.limiter.ceilingDb);
     assert.equal(review.checks.length, 6);
     assert.match(review.limitations.join(" "), /not a trained AI model/);
-    const reviewPanel = page.locator('[aria-label="Processing tradeoff review"]');
+    const reviewPanel = page.getByRole("region", { name: "Processing tradeoff review", exact: true });
     assert.equal(await reviewPanel.count(), 1);
     assert.equal(await reviewPanel.isVisible(), true);
     for (const item of review.checks) {

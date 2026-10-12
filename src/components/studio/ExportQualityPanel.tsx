@@ -52,7 +52,7 @@ export function ExportQualityPanel({ audit, busy, error }: { audit: ExportAudit 
       <p className="mt-2 text-xs text-muted">Mono fold-down change: {fmt(audit.quality.measurements.monoLossDb)} dB. Samples at/above 0 dBFS: {audit.quality.measurements.clippedSamples}. Maximum encoding error: {audit.quality.maxEncodingError.toExponential(2)}.</p>
       <ul className="mt-2 text-sm text-amber">{audit.quality.warnings.map(w => <li key={w}>{w}</li>)}</ul>
       <p className="mt-2 text-xs text-muted">Decoded Float32 source; BS.1770-style loudness and 4× FIR true peak, not independent certification. Short or silent audio may have unavailable values. Compare by listening at matched loudness.</p>
-      <div aria-label="Processing tradeoff review" className="mt-4 rounded-md border border-line bg-bg p-3">
+      <div role="region" aria-label="Processing tradeoff review" className="mt-4 rounded-md border border-line bg-bg p-3">
         <h3 className="text-sm font-medium">Processing tradeoff review</h3>
         {processingReview && <>
           <p className="mt-1 text-sm text-muted" role="status">
