@@ -1,0 +1,20 @@
+# Aurora real-time engine
+
+`engine.ts` is the live-preview DSP; `worklet.ts` is its AudioWorklet shell; `transport.ts` owns position and tail flushing; `client.ts` is the main-thread handle. The optional `render.ts` helper bounces this engine, but **Studio exports retain the established offline renderer**. Live preview is opt-in, not an exact audition of the exported master. See `docs/REALTIME_ENGINE_INTEGRATION.md`.
+
+## Guarantees (each has a test)
+- Block-size invariance: 37, 128 and 1024-sample blocks give the same samples (< 1e-9).
+- Shared-module parity: minimum-phase EQ, dynamic EQ, de-esser and width match the offline path (< 1e-7); enhanced 8× tape/tube/hybrid saturation matches after alignment (< 1e-6). This does not establish full-chain live/export parity.
+- True-peak limiter holds the ceiling at every lookahead (1 to 10 ms), including a 11 kHz inter-sample case.
+- Fixed latency (2686 samples at 48 kHz = 56 ms: 2048 for the linear-phase FIR, 128 hop, 494 limiter, 16 oversampler), whatever is on or off. Original, processed and reference stay sample-aligned; module toggles never shift the timeline.
+- BS.1770 loudness: −23.0 LUFS on the EBU 3341 tone; integrated within 0.15 LU of the offline meter.
+- Pause fades over exactly four quanta and resumes on the next sample; the end of file flushes the engine tail.
+- NaN/Inf input is sanitised and the engine clears its own state.
+- No per-sample allocation. Moving an EQ or crossover knob redesigns filters each block, which allocates a few small objects. Full chain measured at about 12% of one core (about 8× real time) in Node.
+
+## Known limits
+- Linear-phase EQ is a 4096-tap FIR (about 11.7 Hz resolution at 48 kHz), so very low corners such as a 28 Hz high-pass are only approximated. Set `LIN_TAPS` in `linear-eq.ts` to trade resolution for latency. It matches the offline forward-backward mode to about −35 dB error on noise, and is symmetric about its delay (no phase shift).
+- Minimum/linear switching is a 15 ms crossfade between two aligned signals, after one warm-up hop.
+- Saturation shares the application's enhanced 8× tape/tube/hybrid processor, including memory and color controls. Updates warm the new stream and crossfade over 12 ms. These are analog-inspired DSP models, not verified circuit replicas.
+- Parameter changes glide at block rate (about 25 ms); filters are redesigned each block, not per sample.
+- Not yet measured on a real device or in Safari/Firefox. Run it and listen.

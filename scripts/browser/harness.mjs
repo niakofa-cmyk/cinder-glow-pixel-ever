@@ -67,6 +67,25 @@ export function audioInstrumentation() {
   window.__audioContexts = [];
   window.__audioStarts = [];
   window.__audioFilters = [];
+  window.__workletFrames = [];
+  const Worklet = window.AudioWorkletNode;
+  if (Worklet) {
+    window.AudioWorkletNode = class extends Worklet {
+      constructor(ctx, name, options) {
+        super(ctx, name, options);
+        const splitter = ctx.createChannelSplitter(2);
+        const left = ctx.createAnalyser();
+        const right = ctx.createAnalyser();
+        left.fftSize = right.fftSize = 32768;
+        this.connect(splitter);
+        splitter.connect(left, 0); splitter.connect(right, 1);
+        window.__workletCapture = { left, right };
+        this.port.addEventListener("message", event => {
+          if (event.data.type === "meters") window.__workletFrames.push(event.data);
+        });
+      }
+    };
+  }
   const Native = window.AudioContext;
   window.AudioContext = class extends Native {
     constructor(...args) {

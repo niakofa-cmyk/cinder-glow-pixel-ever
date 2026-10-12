@@ -18,7 +18,7 @@ function sincWindow(x: number): number {
 
 let kernels: Float64Array[] | null = null;
 
-function interpKernels(): Float64Array[] {
+export function interpKernels(): Float64Array[] {
   if (kernels) return kernels;
   kernels = [];
   for (let p = 0; p < PHASES; p++) {

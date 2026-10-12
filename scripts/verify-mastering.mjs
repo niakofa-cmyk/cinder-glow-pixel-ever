@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 import { fixture, makeFixtures, wavInfo } from "./browser/fixtures.mjs";
 import { audioInstrumentation, exported, importProgram, poll, ready, state } from "./browser/harness.mjs";
 import { checkSessions } from "./browser/session-checks.mjs";
+import { checkRealtime } from "./browser/realtime-checks.mjs";
 
 const option = (name, fallback) => process.argv.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 const url = option("url", process.env.E2E_BASE_URL ?? "http://127.0.0.1:5000");
@@ -25,6 +26,13 @@ page.on("console", message => { if (message.type() === "error") errors.push(mess
 page.on("requestfailed", request => failedRequests.push(request.url()));
 page.on("request", request => { if (["POST", "PUT", "PATCH"].includes(request.method())) audioWrites.push(request.url()); });
 async function check(name, fn) {
+  if (process.argv.includes("--live-only") && ![
+    "Preview and demo render", "WAV program and reference import",
+    "AudioWorklet produces real output, live meters and parameter updates",
+    "Live pause/resume and seek preserve transport position",
+    "Unsupported live controls pause explicitly and rendered mode remains usable",
+    "No uncaught errors, failed requests, or audio uploads",
+  ].includes(name)) return;
   const started = Date.now();
   try {
     const details = await fn();
@@ -144,6 +152,7 @@ try {
     await importProgram(page, files.program, "program.wav");
     await page.getByRole("button", { name: "Reset", exact: true }).click(); await ready(page);
   });
+  await checkRealtime(page, check);
   await checkSessions(page, files, check);
   await check("Storage unavailable still opens demo with an explicit error", async () => {
     const isolated = await browser.newContext();

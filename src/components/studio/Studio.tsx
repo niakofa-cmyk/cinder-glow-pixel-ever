@@ -8,6 +8,8 @@ import { SpectrumPlot, Waveform } from "./Displays";
 import { Meters } from "./Meters";
 import { ModulePanel } from "./ModulePanel";
 import { SessionPanel } from "./SessionPanel";
+import { LiveMeters } from "./LiveMeters";
+import { useRealtimePreview } from "@/hooks/useRealtimePreview";
 
 const MODULES: { id: string; name: string }[] = [
   { id: "map", name: "Signal chain" },
@@ -54,6 +56,10 @@ export function Studio() {
   const session = useSession();
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [realtime, setRealtime] = useState(false);
+  const rt = useRealtimePreview(realtime);
+  const activePlaying = realtime ? rt.playing : playing;
+  const activeProgress = realtime ? rt.progress : progress;
   const ctxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const rafRef = useRef(0);
@@ -70,6 +76,7 @@ export function Studio() {
   }, []);
 
   const stop = () => {
+    rt.pause();
     sourceRef.current?.stop();
     sourceRef.current = null;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -77,6 +84,7 @@ export function Studio() {
   };
 
   const play = async () => {
+    if (realtime) { await rt.play(); return; }
     const program = session.program;
     if (!program) return;
     let audio: Clip | null = program;
@@ -148,7 +156,7 @@ export function Studio() {
   };
 
   const playingRef = useRef(false);
-  playingRef.current = playing;
+  playingRef.current = activePlaying;
   const playRef = useRef(play);
   const stopRef = useRef(stop);
   playRef.current = play;
@@ -244,6 +252,25 @@ export function Studio() {
 
       <main className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         <SessionPanel onRestore={stop} />
+        <section aria-label="Playback engine" className="rounded-md border border-line p-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" aria-pressed={realtime} className={`h-11 rounded-md px-3 text-sm ${realtime ? "bg-amber text-ink" : "bg-surface"}`}
+              onClick={() => { stop(); setRealtime(!realtime); }}>Live preview</button>
+            <p className="text-xs text-muted">{realtime ? "AudioWorklet: controls update during playback." : "Rendered playback: exact offline master."}</p>
+          </div>
+          {realtime && <>
+            <p className="mt-2 text-xs text-muted">Live preview uses FIR linear-phase EQ and causal multiband crossovers. Exports use the existing offline renderer and can sound different. Live latency is {rt.latencyMs.toFixed(1)} ms.</p>
+            {rt.unsupported && <p role="alert" className="mt-2 text-sm text-amber">Use rendered playback for {rt.unsupported}. Live playback is paused rather than ignoring these controls.</p>}
+            {rt.error && <p role="alert" className="mt-2 text-sm text-amber">{rt.error}</p>}
+            <label className="mt-3 flex items-center gap-3 text-xs text-muted">
+              Seek
+              <input type="range" aria-label="Seek position" className="min-w-0 flex-1 accent-amber" min={0}
+                max={session.program ? session.program.l.length / session.program.sampleRate : 0} step={0.01}
+                value={activeProgress * (session.program ? session.program.l.length / session.program.sampleRate : 0)}
+                disabled={!rt.initialized} onChange={event => rt.seek(Number(event.target.value))} />
+            </label>
+          </>}
+        </section>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm" onClick={() => session.loadDemo()}>
             House program
@@ -307,7 +334,7 @@ export function Studio() {
                       ? (session.reference?.l ?? null)
                       : (session.program?.l ?? null)
                 }
-                progress={playing ? progress : 0}
+                progress={activeProgress}
               />
               </div>
             </div>
@@ -326,12 +353,16 @@ export function Studio() {
             )}
           </section>
 
+          <div className="flex flex-col gap-4">
           <Meters
             analysis={session.analysis}
             report={session.report}
             targetLufs={session.targetLufs}
             onTarget={session.setTarget}
           />
+          {realtime && <LiveMeters live={rt.live} scope={rt.scope} sampleRate={session.program?.sampleRate ?? 48000}
+            latencyMs={rt.latencyMs} active={rt.playing} onResetHold={rt.resetMeters} />}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -392,12 +423,12 @@ export function Studio() {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => (playing ? stop() : void play())}
-            disabled={!session.program}
+            onClick={() => (activePlaying ? stop() : void play())}
+            disabled={!session.program || (realtime && !!rt.unsupported)}
             className="inline-flex h-11 items-center gap-2 rounded-md bg-amber px-4 text-sm font-medium text-ink disabled:opacity-40"
           >
-            {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
-            {playing ? "Stop" : "Play"}
+            {activePlaying ? <Pause className="size-4" /> : <Play className="size-4" />}
+            {activePlaying ? (realtime ? "Pause" : "Stop") : "Play"}
           </button>
           <Choice
             value={session.source}
