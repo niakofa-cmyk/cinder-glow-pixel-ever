@@ -189,10 +189,13 @@ try {
     const isolated = await browser.newContext();
     try {
       await isolated.addInitScript(() => {
-        indexedDB.open = () => { throw new DOMException("Local storage access denied.", "SecurityError"); };
+        Object.defineProperty(window, "indexedDB", { configurable: true, value: {
+          open() { throw new DOMException("Local storage access denied.", "SecurityError"); },
+        } });
       });
       const privatePage = await isolated.newPage();
       await privatePage.goto(url); await ready(privatePage, "House program");
+      await poll(async () => /storage access denied/.test((await state(privatePage)).storageError ?? ""), "Storage denial was not reported");
       assert.match((await state(privatePage)).storageError, /storage access denied/);
       assert.ok(await privatePage.getByRole("alert").isVisible());
     } finally { await isolated.close(); }

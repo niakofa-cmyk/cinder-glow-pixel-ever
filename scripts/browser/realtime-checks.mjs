@@ -46,7 +46,13 @@ export async function checkRealtime(page, files, check) {
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await poll(() => page.evaluate(() => window.__workletFrames.at(-1)?.playing === false), "Pause was not acknowledged");
     const slider = page.getByRole("slider", { name: "Seek position", exact: true });
-    await slider.press("Home"); await slider.press("PageUp"); await slider.press("PageUp");
+    await slider.press("Home");
+    await poll(() => page.evaluate(() => window.__workletFrames.at(-1)?.frame === 0), "Seek home was not acknowledged");
+    await slider.press("PageUp");
+    await poll(async () =>
+      await page.evaluate(() => window.__workletFrames.at(-1)?.frame >= 48000) && Number(await slider.inputValue()) >= 1,
+    "First coarse seek was not acknowledged");
+    await slider.press("PageUp");
     await poll(() => page.evaluate(() => {
       const f = window.__workletFrames.at(-1); return !f.playing && f.frame > 48000;
     }), "Seek did not reach the worklet");
