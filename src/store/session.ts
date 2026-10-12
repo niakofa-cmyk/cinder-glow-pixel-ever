@@ -1,8 +1,8 @@
-import { analyze, spectralDelta } from "@/dsp/analyze";
+import { spectralDelta } from "@/dsp/analyze";
 import { matchGainDb } from "@/dsp/chain";
 import { calibrationTone, makeDemo } from "@/dsp/demo";
+import type { OfflineCommand, OfflineResponse } from "@/dsp/offline.worker";
 import { neutralParams } from "@/dsp/presets";
-import { renderClip } from "@/dsp/render-clip";
 import { applyPatch, suggest } from "@/dsp/suggest";
 import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "@/dsp/types";
 import { create } from "zustand";
@@ -42,6 +42,12 @@ type Session = {
 };
 
 let job = 0;
+let requestId = 0;
+let offlineWorker: Worker | null = null;
+const pending = new Map<
+  number,
+  { resolve: (response: OfflineResponse) => void; reject: (error: Error) => void }
+>();
 
 function toClip(l: ArrayLike<number>, r: ArrayLike<number>, sampleRate: number): Clip {
   const outL = new Float32Array(l.length);
@@ -59,47 +65,109 @@ function memoryMessage(error: unknown): string {
   return raw || "Could not measure that file. The original still plays.";
 }
 
-/** Analyze, then master, without cloning the song into a worker. */
-function master(id: number, clip: Clip, params: ChainParams, alsoAnalyze: boolean) {
-  setTimeout(() => {
-    if (id !== job) return;
+function settlePending(error: Error) {
+  for (const task of pending.values()) task.reject(error);
+  pending.clear();
+}
+
+function terminateOfflineWorker(reason: string) {
+  offlineWorker?.terminate();
+  offlineWorker = null;
+  settlePending(new Error(reason));
+}
+
+function getOfflineWorker(): Worker {
+  if (typeof Worker === "undefined") {
+    throw new Error("This browser does not support background audio processing.");
+  }
+  if (offlineWorker) return offlineWorker;
+
+  const worker = new Worker(new URL("../dsp/offline.worker.ts", import.meta.url), { type: "module" });
+  worker.onmessage = (event: MessageEvent<OfflineResponse>) => {
+    const response = event.data;
+    const task = pending.get(response.id);
+    if (!task) return;
+    pending.delete(response.id);
+    if (response.op === "error") task.reject(new Error(response.message));
+    else task.resolve(response);
+  };
+  worker.onerror = () => {
+    terminateOfflineWorker("Background audio processing stopped unexpectedly.");
+  };
+  worker.onmessageerror = () => {
+    terminateOfflineWorker("The audio-processing worker returned unreadable data.");
+  };
+  offlineWorker = worker;
+  return worker;
+}
+
+function runOffline(command: OfflineCommand, transfer: Transferable[]): Promise<OfflineResponse> {
+  const worker = getOfflineWorker();
+  const id = ++requestId;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
     try {
-      if (alsoAnalyze) {
-        const ref = useSession.getState().reference;
-        const analysis = analyze(clip.l, clip.r, clip.sampleRate);
-        const refAnalysis = ref && ref.sampleRate === clip.sampleRate ? analyze(ref.l, ref.r, ref.sampleRate) : null;
-        if (id !== job) return;
-        useSession.setState({
-          analysis,
-          refAnalysis,
-          findings: suggest(analysis, useSession.getState().targetLufs),
-          busy: "Rendering. Original can play.",
-        });
-      }
+      worker.postMessage({ ...command, id }, transfer);
     } catch (error) {
-      if (id !== job) return;
-      useSession.setState({ busy: null, error: memoryMessage(error) });
-      return;
+      pending.delete(id);
+      reject(error instanceof Error ? error : new Error("Audio processing could not start."));
     }
-    setTimeout(() => {
-      if (id !== job) return;
-      try {
-        const outL = new Float32Array(clip.l.length);
-        const outR = new Float32Array(clip.r.length);
-        const report = renderClip(clip.l, clip.r, clip.sampleRate, params, outL, outR);
-        if (id !== job) return;
-        useSession.setState({
-          rendered: { l: outL, r: outR, sampleRate: clip.sampleRate },
-          report,
-          busy: null,
-          error: null,
-        });
-      } catch (error) {
-        if (id !== job) return;
-        useSession.setState({ busy: null, error: memoryMessage(error) });
-      }
-    }, 0);
-  }, 0);
+  });
+}
+
+function copyForWorker(clip: Clip): Clip {
+  return { l: new Float32Array(clip.l), r: new Float32Array(clip.r), sampleRate: clip.sampleRate };
+}
+
+/** Keep analysis and offline rendering away from the browser's interactive thread. */
+async function master(id: number, clip: Clip, params: ChainParams, alsoAnalyze: boolean) {
+  try {
+    const audio = copyForWorker(clip);
+    let command: OfflineCommand;
+    const transfer: Transferable[] = [audio.l.buffer, audio.r.buffer];
+
+    if (alsoAnalyze) {
+      const state = useSession.getState();
+      const reference = state.reference?.sampleRate === clip.sampleRate ? copyForWorker(state.reference) : null;
+      if (reference) transfer.push(reference.l.buffer, reference.r.buffer);
+      command = {
+        op: "full",
+        audio,
+        reference,
+        params,
+        targetLufs: state.targetLufs,
+      };
+    } else {
+      command = { op: "render", audio, params };
+    }
+
+    const response = await runOffline(command, transfer);
+    if (id !== job) return;
+
+    if (alsoAnalyze) {
+      if (response.op !== "full") throw new Error("The audio worker returned an incomplete analysis.");
+      useSession.setState({
+        analysis: response.analysis,
+        refAnalysis: response.refAnalysis,
+        findings: suggest(response.analysis, useSession.getState().targetLufs),
+        rendered: { l: response.l, r: response.r, sampleRate: response.sampleRate },
+        report: response.report,
+        busy: null,
+        error: null,
+      });
+    } else {
+      if (response.op !== "render") throw new Error("The audio worker returned an incomplete render.");
+      useSession.setState({
+        rendered: { l: response.l, r: response.r, sampleRate: response.sampleRate },
+        report: response.report,
+        busy: null,
+        error: null,
+      });
+    }
+  } catch (error) {
+    if (id !== job) return;
+    useSession.setState({ busy: null, error: memoryMessage(error) });
+  }
 }
 
 export const useSession = create<Session>((set, get) => ({
@@ -123,6 +191,7 @@ export const useSession = create<Session>((set, get) => ({
 
   loadDemo: () => {
     const id = ++job;
+    terminateOfflineWorker("Processing was replaced by a new program.");
     set({ busy: "Measuring the house program", error: null });
     setTimeout(() => {
       if (id !== job) return;
@@ -152,6 +221,7 @@ export const useSession = create<Session>((set, get) => ({
 
   loadCalibration: () => {
     const id = ++job;
+    terminateOfflineWorker("Processing was replaced by a calibration tone.");
     set({ busy: "Measuring the alignment tone", error: null });
     setTimeout(() => {
       if (id !== job) return;
@@ -180,6 +250,7 @@ export const useSession = create<Session>((set, get) => ({
 
   loadProgram: (name, audio) => {
     const id = ++job;
+    terminateOfflineWorker("Processing was replaced by a new program.");
     const previousRef = get().reference;
     const sameRate = previousRef && previousRef.sampleRate === audio.sampleRate ? previousRef : null;
     const rateError =
@@ -216,31 +287,28 @@ export const useSession = create<Session>((set, get) => ({
       return;
     }
     const id = ++job;
+    terminateOfflineWorker("Processing was replaced by a new reference.");
     set({
       reference: audio,
       referenceName: name,
       refAnalysis: null,
-      busy: "Measuring the reference. It can play.",
+      busy: "Measuring the reference and refreshing the master.",
       error: null,
     });
-    setTimeout(() => {
-      if (id !== job) return;
-      try {
-        const refAnalysis = analyze(audio.l, audio.r, audio.sampleRate);
-        if (id !== job) return;
-        set({ refAnalysis, busy: null });
-      } catch (error) {
-        set({ busy: null, error: memoryMessage(error) });
-      }
-    }, 0);
+    master(id, program, get().params, true);
   },
 
   setParams: (params) => {
-    set({ params });
     const id = ++job;
+    terminateOfflineWorker("Processing was superseded by a newer setting.");
     const program = get().program;
+    set({
+      params,
+      busy: program ? "Rendering. Original can play." : null,
+      rendered: program ? null : get().rendered,
+      error: null,
+    });
     if (!program) return;
-    set({ params, busy: "Rendering. Original can play.", rendered: null });
     setTimeout(() => {
       if (id !== job) return;
       const state = get();

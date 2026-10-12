@@ -1,0 +1,21 @@
+You are building an advanced, interactive, progressive web-based Audio Engineering DAW/Studio Suite. The architecture is uniquely structured into a hybrid environment:
+1. An immutable C++ / Native DSP Core (engine/aurora_node.cpp) which acts as the localized high-performance muscle.
+2. A matching, high-fidelity TypeScript Web Audio processing layout (src/dsp/) linked to an interactive React/TanStack frontend.
+This project is built to prove that next-generation browser applications can achieve the exact same zero-latency, high-precision mixing and mastering capabilities traditionally gatekept by heavy desktop apps (like Pro Tools or Logic Pro).
+
+🛡️ Non-Negotiable Architectural Constraints
+
+Based on the file ecosystem inside .vercel/, scripts/, and src/dsp/, the project enforces the following non-negotiable development rules:
+• Lock-Free, Allocation-Free Processing Loops: Audio callback streams inside src/dsp/ must never initialize dynamic memory arrays (new Float32Array) mid-process. All buffers must be pre-allocated during instantiations to prevent Web Audio thread garbage collection pops and audio clicks.
+• Absolute Phase Alignment: When using splitting modules (like crossover.ts), standard recursive IIR filtering is strictly forbidden if it causes phase shifting. You must enforce Linear-Phase operations to preserve vocal transients.
+• Strict Monotonic Security: All multi-speaker routing frameworks must maintain automated mono-compatibility verification to avoid total instrument phase cancellation on single-speaker systems (like smartphones).
+• Pure Mathematical Sample Decoupling: Oversampling algorithms must handle arbitrary host clock transitions (e.g., standardizing processing calculations internally regardless of whether the user's audio interface is locked to 44.1kHz, 48kHz, or 96kHz).
+
+🎯 Platform, Users, Formats, and Server Architecture
+
+
+Parameter	Specification & Project Mapping
+Target Platform	Progressive Web Application (PWA) deployed natively via Vercel. It uses a highly responsive desktop/mobile adaptive browser layout driven by scripts/grok-pwa-plugin.mjs and native browser guards.
+Expected Users	Professional Audio Engineers, Mixing/Mastering Producers, Vocalists, and Sound Designers who require pristine analog warmth paired with highly localized mathematical precision without installation barriers.
+Audio Formats	Real-time native Uncompressed PCM Streams (32-bit Float arrays) handled via the browser's Web Audio API context, translating into high-fidelity .wav export tracking protocols.
+Processing Location	100% Local / Client-Side Client Execution. While the application features serverless orchestration layers (__server.func/ inside .vercel/ output for deployment hydration, routing, and user session authentication), all real-time audio sample calculations must run locally inside the client's browser engine thread to ensure instantaneous, ultra-low latency response.
