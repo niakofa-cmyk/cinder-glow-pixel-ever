@@ -130,6 +130,10 @@ for controls, privacy/storage limits, commands, coverage, and remaining work.
   Further callback profiling and allocation reduction remain ongoing work.
 - Treat native C++/JUCE or Rust audio-device support as a separate platform
   milestone, with packaging, latency, and licensing decisions documented first.
+- **Implemented:** a repeatable Node engine benchmark with static stage
+  ablations, repeated trials, high-rate processing and setting-change soak
+  checks. See [benchmark commands and limits](ENGINE_PERFORMANCE_BENCHMARK.md).
+  Node measurements do not establish AudioWorklet deadline or device performance.
 - Share DSP behavior across engines only after numerical and listening tests
   establish parity.
 
