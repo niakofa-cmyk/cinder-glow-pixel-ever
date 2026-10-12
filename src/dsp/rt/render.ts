@@ -2,8 +2,39 @@ import type { RenderResult } from "../chain.ts";
 import { gainToDb } from "../biquad.ts";
 import { measureLoudness } from "../lufs.ts";
 import { measureTruePeak } from "../truepeak.ts";
-import type { ChainParams, Stereo } from "../types.ts";
+import type { ChainParams, Clip, Stereo } from "../types.ts";
 import { RealtimeEngine } from "./engine.ts";
+
+/** Static processed/full-range print, with the same Float32 output as the worklet. */
+export function renderSharedClip(input: Clip | Stereo, params: ChainParams, block = 128): Clip {
+  if (!Number.isInteger(block) || block < 1 || block > 4096) throw new Error("Invalid shared-render block size.");
+  const engine = new RealtimeEngine(input.sampleRate, block);
+  engine.setParams(params, true); // Also rejects unsupported features, without a fallback.
+  engine.setSource("processed", true);
+  engine.setMonitor("full", true);
+  const total = input.l.length;
+  const latency = engine.latency;
+  const l = new Float32Array(total), r = new Float32Array(total);
+  const inL = new Float64Array(block), inR = new Float64Array(block);
+  const outL = new Float64Array(block), outR = new Float64Array(block);
+  const zero = new Float64Array(block);
+  for (let pos = 0; pos < total + latency; pos += block) {
+    const n = Math.min(block, total + latency - pos);
+    for (let i = 0; i < n; i++) {
+      inL[i] = pos + i < total ? input.l[pos + i]! : 0;
+      inR[i] = pos + i < total ? input.r[pos + i]! : 0;
+    }
+    engine.process(inL, inR, zero, zero, n, outL, outR);
+    const start = Math.max(0, latency - pos);
+    const end = Math.min(n, total + latency - pos);
+    if (end > start) {
+      l.set(outL.subarray(start, end), pos + start - latency);
+      r.set(outR.subarray(start, end), pos + start - latency);
+    }
+  }
+  if (engine.meters().recovered) throw new Error("Shared rendering encountered non-finite audio. Check the source and settings.");
+  return { l, r, sampleRate: input.sampleRate };
+}
 
 /**
  * Print the master through the real-time engine, so the file is the same

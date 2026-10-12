@@ -30,6 +30,7 @@ class AuroraMaster extends AudioWorkletProcessor {
   private sinceMeter = 0;
   private metersOwed = false;
   private controlsBlocked = false;
+  private parameterKey: string | null = null;
 
   constructor() {
     super();
@@ -60,6 +61,7 @@ class AuroraMaster extends AudioWorkletProcessor {
         }
         this.transport.load(m.slot, m.l, m.r);
         if (m.slot === "program") {
+          this.parameterKey = null;
           this.pausing = false;
           this.transport.pause();
           this.engine.reset();
@@ -75,7 +77,13 @@ class AuroraMaster extends AudioWorkletProcessor {
         this.metersOwed = true;
         return;
       case "params":
-        this.engine.setParams(m.params);
+        {
+          const key = JSON.stringify(m.params);
+          // Cold-start settings must match a static print; live edits still glide.
+          // An unchanged resume must not reset stateful saturation.
+          this.engine.setParams(m.params, !this.transport.playing && key !== this.parameterKey);
+          this.parameterKey = key;
+        }
         this.controlsBlocked = false;
         return;
       case "source":

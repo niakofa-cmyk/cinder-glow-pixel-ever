@@ -4,6 +4,7 @@ import { makeDemo } from "../demo.ts";
 import { neutralParams } from "../presets.ts";
 import { bounceThroughEngine, RealtimeEngine } from "./engine.ts";
 import type { FromWorklet, ToWorklet } from "./protocol.ts";
+import { renderSharedClip } from "./render.ts";
 
 const SR = 48000;
 const Q = 128;
@@ -34,6 +35,64 @@ type Proc = {
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
 };
 let Ctor: (new () => Proc) | null = null;
+
+for (const rate of [48000, 44100]) {
+  for (const mode of ["minimum", "linear"] as const) {
+    for (const target of ["stereo", "mid", "side"] as const) {
+      it(`shared print matches cold-start worklet samples: ${rate}/${mode}/${target}`, () => {
+        assert.ok(Ctor);
+        (globalThis as unknown as { sampleRate: number }).sampleRate = rate;
+        try {
+          const n = rate;
+          const input = { l: new Float32Array(n), r: new Float32Array(n), sampleRate: rate };
+          for (let i = 0; i < n; i++) {
+            input.l[i] = 0.12 * Math.sin(2 * Math.PI * 220 * i / rate) + 0.02 * Math.sin(2 * Math.PI * 7000 * i / rate);
+            input.r[i] = 0.1 * Math.sin(2 * Math.PI * 330 * i / rate) + 0.03 * Math.sin(2 * Math.PI * 5000 * i / rate);
+          }
+          const params = neutralParams();
+          params.eqMode = mode; params.eqTarget = target; params.inputGainDb = 3;
+          params.bands = params.bands.map(b => b.id === "low" ? { ...b, gainDb: 4 } : b);
+          params.saturation = { ...params.saturation, enabled: true, mode: "hybrid",
+            driveDb: 6, mix: 0.4, memory: 0.6, lowColor: 0.2, highColor: -0.2 };
+          params.multiband.enabled = true;
+          params.dynamicEq.enabled = true; params.deEss.enabled = true;
+          params.glue.enabled = true; params.glue.optical = 0;
+          params.transient = { enabled: true, attack: 0.2, sustain: -0.1 };
+          params.width = 1.2; params.limiter.enabled = true;
+          const w = new Ctor();
+          const send = (data: ToWorklet) => w.port.onmessage?.({ data });
+          // This is the application's actual load → params → play ordering.
+          send({ type: "load", slot: "program", l: input.l, r: input.r, sampleRate: rate });
+          send({ type: "params", params });
+          send({ type: "source", source: "processed" });
+          send({ type: "monitor", mode: "full" }); send({ type: "match", db: 0 });
+          send({ type: "play" });
+          const ready = w.port.messages.find(m => m.type === "ready");
+          assert.ok(ready?.type === "ready");
+          const frames = Math.ceil((n + ready.latencySamples) / Q) * Q;
+          const l = new Float32Array(frames), r = new Float32Array(frames);
+          const output = [[new Float32Array(Q), new Float32Array(Q)]];
+          for (let pos = 0; pos < frames; pos += Q) {
+            assert.equal(w.process([], output), true);
+            l.set(output[0]![0]!, pos); r.set(output[0]![1]!, pos);
+          }
+          const printed = renderSharedClip(input, params);
+          assert.equal(printed.l.length, n); assert.equal(printed.sampleRate, rate);
+          assert.ok(printed.l.some(sample => Math.abs(sample) > 0.01), "Shared processing unexpectedly produced silence");
+          let error = 0;
+          for (let i = 0; i < n; i++) error = Math.max(error,
+            Math.abs(printed.l[i]! - l[i + ready.latencySamples]!),
+            Math.abs(printed.r[i]! - r[i + ready.latencySamples]!));
+          assert.ok(error < 2e-7, `aligned sample difference ${error}`);
+          assert.ok(w.port.messages.some(m => m.type === "ended"));
+          assert.ok(!w.port.messages.some(m => m.type === "error"));
+        } finally {
+          (globalThis as unknown as { sampleRate: number }).sampleRate = SR;
+        }
+      });
+    }
+  }
+}
 
 before(async () => {
   const g = globalThis as unknown as Record<string, unknown>;

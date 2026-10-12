@@ -22,7 +22,13 @@ export async function state(page) {
 export async function poll(fn, message, timeout = 60000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    if (await fn()) return;
+    try {
+      if (await fn()) return;
+    } catch (error) {
+      // The dev proxy/HMR can navigate while the first readiness query runs.
+      // Retry only that transient loss; genuine evaluation errors must surface.
+      if (!/Execution context was destroyed|Cannot find context with specified id/.test(String(error))) throw error;
+    }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(message);
@@ -64,6 +70,19 @@ export async function storageDone(page) {
 }
 
 export function audioInstrumentation() {
+  window.__heldSharedExports = [];
+  const NativeWorker = window.Worker;
+  window.Worker = class extends NativeWorker {
+    constructor(url, options) {
+      super(url, options);
+      this.addEventListener("message", event => {
+        if (event.data?.op === "shared-export" && window.__holdSharedExports) {
+          event.stopImmediatePropagation();
+          window.__heldSharedExports.push({ worker: this, message: event.data });
+        }
+      });
+    }
+  };
   window.__audioContexts = [];
   window.__audioStarts = [];
   window.__audioFilters = [];

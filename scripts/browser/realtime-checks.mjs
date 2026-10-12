@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { poll, ready, state } from "./harness.mjs";
+import { readFile } from "node:fs/promises";
+import { renderSharedClip } from "../../src/dsp/rt/render.ts";
+import { decodeWavPcm } from "../../src/dsp/wav.ts";
+import { exported, importProgram, poll, ready, state } from "./harness.mjs";
 
 async function signal(page) {
   return page.evaluate(() => {
@@ -14,7 +17,8 @@ async function signal(page) {
   });
 }
 
-export async function checkRealtime(page, check) {
+export async function checkRealtime(page, files, check) {
+  await importProgram(page, files.program, "program.wav");
   await check("AudioWorklet produces real output, live meters and parameter updates", async () => {
     await page.getByRole("button", { name: "Reset", exact: true }).click(); await ready(page);
     await page.getByRole("button", { name: "Processed", exact: true }).click();
@@ -52,11 +56,71 @@ export async function checkRealtime(page, check) {
       const f = window.__workletFrames.at(-1); return f.playing && f.frame > cursor;
     }, cursor), "Resume reset transport");
   });
+  await check("Shared WAV exports match live-engine DSP in every phase/channel mode and format", async () => {
+    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    await page.getByRole("button", { name: "Reset", exact: true }).click(); await ready(page);
+    await page.getByRole("button", { name: "Full range", exact: true }).click();
+    await page.getByRole("navigation", { name: "Signal chain" }).getByRole("button", { name: /Equalizer/ }).click();
+    await page.getByRole("slider", { name: "Gain", exact: true }).first().press("End"); await ready(page);
+    const input = decodeWavPcm(await readFile(files.program)); assert.ok(input);
+    let maximumError = 0;
+    for (const phase of ["Minimum phase", "Linear phase"]) {
+      await page.getByRole("button", { name: phase, exact: true }).click();
+      for (const target of ["Stereo", "Mid", "Side"]) {
+        await page.getByRole("button", { name: target, exact: true }).click(); await ready(page);
+        const expected = renderSharedClip(input, (await state(page)).params);
+        for (const bits of [32, 24, 16]) {
+          const out = await exported(page, bits === 32 ? "Live-engine 32-float" : `Live-engine ${bits}-bit WAV`);
+          assert.equal(out.frames, input.l.length); assert.equal(out.rate, input.sampleRate);
+          assert.equal(out.channels, 2);
+          assert.ok(out.samples.some(sample => Math.abs(sample) > 0.01), "Shared WAV unexpectedly contains silence");
+          let error = 0;
+          for (let i = 0; i < out.frames; i++) error = Math.max(error,
+            Math.abs(out.samples[i * 2] - expected.l[i]), Math.abs(out.samples[i * 2 + 1] - expected.r[i]));
+          const tolerance = bits === 32 ? 2e-7 : 3 / 2 ** (bits - 1) + 2e-7;
+          assert.ok(error < tolerance, `${phase}/${target}/${bits}: ${error}`);
+          maximumError = Math.max(maximumError, error);
+        }
+      }
+    }
+    assert.equal((await state(page)).frames, input.l.length, "Source audio was detached");
+    return { formats: 3, phaseChannelCombinations: 6, maximumError };
+  });
+  await check("Changing settings during shared export prevents a stale download and allows retry", async () => {
+    let downloads = 0;
+    const onDownload = () => downloads++;
+    page.on("download", onDownload);
+    try {
+      await page.evaluate(() => { window.__holdSharedExports = true; });
+      await page.getByRole("button", { name: "Live-engine 32-float", exact: true }).click();
+      await poll(() => page.evaluate(() => window.__heldSharedExports.length > 0), "No shared worker response");
+      assert.equal(await page.getByRole("button", { name: "Live-engine 24-bit WAV", exact: true }).isDisabled(), true);
+      const before = JSON.stringify((await state(page)).params);
+      await page.getByRole("slider", { name: "Gain", exact: true }).first().press("Home");
+      await poll(async () => JSON.stringify((await state(page)).params) !== before, "The deferred knob edit did not reach the store");
+      await page.evaluate(() => {
+        window.__holdSharedExports = false;
+        for (const held of window.__heldSharedExports.splice(0))
+          held.worker.dispatchEvent(new MessageEvent("message", { data: held.message }));
+      });
+      const warning = page.locator('[role="alert"]').filter({ hasText: /changed during shared export/ });
+      await poll(async () => await warning.count() === 1, "Stale settings were exported");
+      await warning.scrollIntoViewIfNeeded(); assert.equal(await warning.isVisible(), true);
+      assert.equal(downloads, 0);
+      await ready(page);
+      const retry = await exported(page, "Live-engine 32-float");
+      assert.equal(retry.frames, (await state(page)).frames);
+    } finally {
+      page.off("download", onDownload);
+      await page.evaluate(() => { window.__holdSharedExports = false; });
+    }
+  });
   await check("Unsupported live controls pause explicitly and rendered mode remains usable", async () => {
     await page.getByRole("navigation", { name: "Signal chain" }).getByRole("button", { name: /Glue/ }).click();
     await page.getByRole("button", { name: "Glue off", exact: true }).click();
     await poll(() => page.getByRole("alert").filter({ hasText: /optical glue/ }).isVisible(), "Unsupported optical model was silently ignored");
     assert.equal(await page.getByRole("button", { name: "Play", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Live-engine 32-float", exact: true }).isDisabled(), true);
     await page.getByRole("button", { name: "Live preview", exact: true }).click();
     await page.getByRole("button", { name: "Reset", exact: true }).click(); await ready(page);
     await page.getByRole("button", { name: "Full range", exact: true }).click();

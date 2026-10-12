@@ -10,6 +10,7 @@ import { ModulePanel } from "./ModulePanel";
 import { SessionPanel } from "./SessionPanel";
 import { LiveMeters } from "./LiveMeters";
 import { useRealtimePreview } from "@/hooks/useRealtimePreview";
+import { renderSharedWav } from "@/store/session";
 
 const MODULES: { id: string; name: string }[] = [
   { id: "map", name: "Signal chain" },
@@ -60,6 +61,11 @@ export function Studio() {
   const rt = useRealtimePreview(realtime);
   const activePlaying = realtime ? rt.playing : playing;
   const activeProgress = realtime ? rt.progress : progress;
+  const [sharedExportBusy, setSharedExportBusy] = useState(false);
+  const [sharedExportError, setSharedExportError] = useState<string | null>(null);
+  const sharedExportLock = useRef(false);
+  const sharedExportEpoch = useRef(0);
+  useEffect(() => () => { sharedExportEpoch.current++; }, []);
   const ctxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const rafRef = useRef(0);
@@ -232,6 +238,44 @@ export function Studio() {
     URL.revokeObjectURL(url);
   };
 
+  const exportShared = async (bits: 16 | 24 | 32) => {
+    const snapshot = useSession.getState();
+    if (!snapshot.program || sharedExportLock.current) return;
+    const id = sharedExportEpoch.current;
+    const settings = JSON.stringify(snapshot.params);
+    sharedExportLock.current = true;
+    setSharedExportBusy(true);
+    setSharedExportError(null);
+    try {
+      const params = JSON.parse(settings) as typeof snapshot.params;
+      const buffer = await renderSharedWav(snapshot.program, params, bits);
+      if (id !== sharedExportEpoch.current) return;
+      const current = useSession.getState();
+      if (current.program !== snapshot.program || JSON.stringify(current.params) !== settings) {
+        throw new Error("Audio or settings changed during shared export. Export again to print the current settings.");
+      }
+      const url = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = bits === 32 ? "aurora-live-master-32f.wav" : `aurora-live-master-${bits}.wav`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      if (id === sharedExportEpoch.current) {
+        const current = useSession.getState();
+        const message = error instanceof Error ? error.message : "Shared export failed.";
+        const changed = current.program !== snapshot.program || JSON.stringify(current.params) !== settings
+          || /Processing was (?:replaced|superseded)/.test(message);
+        setSharedExportError(changed
+          ? "Audio or settings changed during shared export. Export again to print the current settings."
+          : message);
+      }
+    } finally {
+      sharedExportLock.current = false;
+      if (id === sharedExportEpoch.current) setSharedExportBusy(false);
+    }
+  };
+
   return (
     <div
       className="flex h-dvh flex-col bg-bg text-fg"
@@ -259,7 +303,21 @@ export function Studio() {
             <p className="text-xs text-muted">{realtime ? "AudioWorklet: controls update during playback." : "Rendered playback: exact offline master."}</p>
           </div>
           {realtime && <>
-            <p className="mt-2 text-xs text-muted">Live preview uses FIR linear-phase EQ and causal multiband crossovers. Exports use the existing offline renderer and can sound different. Live latency is {rt.latencyMs.toFixed(1)} ms.</p>
+            <p className="mt-2 text-xs text-muted">Live preview uses FIR linear-phase EQ and causal multiband crossovers. Shared-engine exports below use the same DSP; the footer's offline exports use the established renderer. Live latency is {rt.latencyMs.toFixed(1)} ms.</p>
+            <div role="group" aria-label="Shared-engine WAV export" className="mt-3 rounded-md border border-line p-3">
+              <p className="text-sm font-medium">Shared-engine WAV</p>
+              <p className="mt-1 text-xs text-muted">Prints the program with current fixed settings, with DSP latency removed. Compare using Processed, Full range and Match loudness off. Reference/original selection, monitor effects, pauses, seeks and automation are not printed. 16/24-bit adds dither; 32-float preserves sample values.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {([24, 32, 16] as const).map(bits => <button key={bits} type="button"
+                  className="h-11 rounded-md bg-bg px-3 text-sm disabled:opacity-40"
+                  disabled={!session.program || !!rt.unsupported || sharedExportBusy}
+                  onClick={() => void exportShared(bits)}>
+                  {bits === 32 ? "Live-engine 32-float" : `Live-engine ${bits}-bit WAV`}
+                </button>)}
+              </div>
+              {sharedExportBusy && <p role="status" className="mt-2 text-xs text-amber">Rendering shared-engine WAV in the background…</p>}
+              {sharedExportError && <p role="alert" className="mt-2 text-sm text-amber">{sharedExportError}</p>}
+            </div>
             {rt.unsupported && <p role="alert" className="mt-2 text-sm text-amber">Use rendered playback for {rt.unsupported}. Live playback is paused rather than ignoring these controls.</p>}
             {rt.error && <p role="alert" className="mt-2 text-sm text-amber">{rt.error}</p>}
             <label className="mt-3 flex items-center gap-3 text-xs text-muted">
@@ -456,6 +514,7 @@ export function Studio() {
           >
             Match loudness{session.matchLoudness && Math.abs(match) >= 0.05 ? ` ${match > 0 ? "+" : ""}${match.toFixed(1)} dB` : ""}
           </button>
+          <span className="text-xs text-muted">Offline WAV</span>
           <button type="button" className="inline-flex h-11 items-center gap-2 rounded-md bg-bg px-3 text-sm disabled:opacity-40" disabled={!session.rendered} onClick={() => exportWav(24)}>
             <Download className="size-4" aria-hidden="true" />
             24-bit WAV

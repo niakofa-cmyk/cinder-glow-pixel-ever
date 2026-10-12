@@ -130,6 +130,15 @@ function copyForWorker(clip: Clip): Clip {
   return { l: new Float32Array(clip.l), r: new Float32Array(clip.r), sampleRate: clip.sampleRate };
 }
 
+/** Does not replace the established offline master or mutate/detach source audio. */
+export async function renderSharedWav(clip: Clip, params: ChainParams, bits: 16 | 24 | 32): Promise<ArrayBuffer> {
+  const audio = copyForWorker(clip);
+  const response = await runOffline({ op: "shared-export", audio, params, bits },
+    [audio.l.buffer as ArrayBuffer, audio.r.buffer as ArrayBuffer]);
+  if (response.op !== "shared-export") throw new Error("Background shared export returned incomplete data.");
+  return response.buffer;
+}
+
 /** Keep analysis and offline rendering away from the browser's interactive thread. */
 async function master(id: number, clip: Clip, params: ChainParams, alsoAnalyze: boolean) {
   try {

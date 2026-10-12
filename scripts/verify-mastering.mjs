@@ -30,6 +30,8 @@ async function check(name, fn) {
     "Preview and demo render", "WAV program and reference import",
     "AudioWorklet produces real output, live meters and parameter updates",
     "Live pause/resume and seek preserve transport position",
+    "Shared WAV exports match live-engine DSP in every phase/channel mode and format",
+    "Changing settings during shared export prevents a stale download and allows retry",
     "Unsupported live controls pause explicitly and rendered mode remains usable",
     "No uncaught errors, failed requests, or audio uploads",
   ].includes(name)) return;
@@ -152,7 +154,7 @@ try {
     await importProgram(page, files.program, "program.wav");
     await page.getByRole("button", { name: "Reset", exact: true }).click(); await ready(page);
   });
-  await checkRealtime(page, check);
+  await checkRealtime(page, files, check);
   await checkSessions(page, files, check);
   await check("Storage unavailable still opens demo with an explicit error", async () => {
     const isolated = await browser.newContext();
