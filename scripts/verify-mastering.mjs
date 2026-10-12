@@ -31,10 +31,12 @@ if (process.argv.includes("--no-editor-extensions")) {
     route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
 }
 const page = await context.newPage();
-const errors = [], failedRequests = [], audioWrites = [], results = [];
+let currentCheck = null;
+const { attachNetworkAudit } = await import("./browser/network-audit.mjs");
+const { failedRequests, navigations } = attachNetworkAudit(page, () => currentCheck);
+const errors = [], audioWrites = [], results = [];
 page.on("pageerror", error => errors.push(error.message));
 page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
-page.on("requestfailed", request => failedRequests.push(request.url()));
 page.on("request", request => { if (["POST", "PUT", "PATCH"].includes(request.method())) audioWrites.push(request.url()); });
 async function check(name, fn) {
   if (process.argv.includes("--snapshots-only") && ![
@@ -63,6 +65,7 @@ async function check(name, fn) {
     "No uncaught errors, failed requests, or audio uploads",
   ].includes(name)) return;
   const started = Date.now();
+  currentCheck = name;
   try {
     const details = await fn();
     results.push({ name, passed: true, ms: Date.now() - started, details });
@@ -215,7 +218,7 @@ try {
     assert.deepEqual(errors, []); assert.deepEqual(failedRequests, []); assert.deepEqual(audioWrites, []);
   });
 } finally {
-  await writeFile(join(dir, "report.json"), JSON.stringify({ url, browser: engine, version: browser.version(), results, errors, failedRequests, audioWrites }, null, 2));
+  await writeFile(join(dir, "report.json"), JSON.stringify({ url, browser: engine, version: browser.version(), results, errors, failedRequests, navigations, audioWrites }, null, 2));
   await browser.close();
   console.log(`Browser evidence: ${dir}`);
 }
