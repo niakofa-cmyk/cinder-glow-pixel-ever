@@ -2,7 +2,8 @@ import type { ChainParams, Stereo } from "../types.ts";
 import { StreamBiquad } from "./biquad-rt.ts";
 import { StreamLimiter } from "./limiter-rt.ts";
 import { StreamCorrelation, StreamLoudness, StreamTruePeak, smallSpeakerCoeffs } from "./meters-rt.ts";
-import { SaturationStage, Compressor, DynBandStage, EqStage, MultibandStage, TransientStage, WidthStage } from "./stages.ts";
+import { SaturationStage, DynBandStage, EqStage, MultibandStage, TransientStage, WidthStage } from "./stages.ts";
+import { CenterCarveStage, SerialGlueStage } from "./analog-imaging.ts";
 import { LINEAR_EQ_LATENCY, LIN_P, LinearEqStage } from "./linear-eq.ts";
 import { BlockSmoother, DelayLine, GainRamp, dbToGain, gainToDb } from "./util.ts";
 import { neutralParams } from "../presets.ts";
@@ -70,7 +71,8 @@ export class RealtimeEngine {
   private readonly dyn: DynBandStage;
   private readonly deess: DynBandStage;
   private readonly multi: MultibandStage;
-  private readonly glue: Compressor;
+  private readonly glue: SerialGlueStage;
+  private readonly carve: CenterCarveStage;
   private readonly transient: TransientStage;
   private readonly sat: SaturationStage;
   private readonly width: WidthStage;
@@ -133,7 +135,8 @@ export class RealtimeEngine {
     this.dyn = new DynBandStage(sampleRate, this.blockSeconds, maxBlock, p.dynamicEq);
     this.deess = new DynBandStage(sampleRate, this.blockSeconds, maxBlock, p.deEss);
     this.multi = new MultibandStage(sampleRate, this.blockSeconds, maxBlock, p.multiband);
-    this.glue = new Compressor(sampleRate, this.blockSeconds, p.glue);
+    this.glue = new SerialGlueStage(sampleRate, p.glue);
+    this.carve = new CenterCarveStage(sampleRate);
     this.transient = new TransientStage(sampleRate, this.blockSeconds, 0, 0);
     this.sat = new SaturationStage(sampleRate, this.blockSeconds, p.saturation.driveDb, p.saturation.mix);
     this.width = new WidthStage(this.blockSeconds, 1);
@@ -198,7 +201,8 @@ export class RealtimeEngine {
     this.dyn.set(p.dynamicEq);
     this.deess.set(p.deEss);
     this.multi.set(p.multiband);
-    this.glue.set(p.glue);
+    this.glue.set(p.glue, immediate);
+    this.carve.set(p.carve, p.carveHz, immediate);
     this.transient.set(p.transient.attack, p.transient.sustain);
     this.sat.set(p.saturation.enabled && p.saturation.mix > 0.001, p.saturation.mode, p.saturation.driveDb, p.saturation.mix, {
       memory: p.saturation.memory, lowColor: p.saturation.lowColor,
@@ -211,7 +215,6 @@ export class RealtimeEngine {
       this.dyn.snap();
       this.deess.snap();
       this.multi.snap();
-      this.glue.snap();
       this.transient.snap();
       this.sat.snap();
       this.width.snap();
@@ -281,6 +284,7 @@ export class RealtimeEngine {
     this.deess.reset();
     this.multi.reset();
     this.glue.reset();
+    this.carve.reset();
     this.transient.reset();
     this.sat.reset();
     this.limiter.reset();
@@ -379,6 +383,7 @@ export class RealtimeEngine {
     this.fadeStage(this.en.transient, n, (l, r, m) => this.transient.process(l, r, m));
     this.sat.process(wl, wr, n);
     this.width.process(wl, wr, n);
+    this.carve.process(wl, wr, n);
     const wet = this.wetBuf;
     const ramp = this.en.limiter;
     for (let i = 0; i < n; i++) wet[i] = ramp.next();

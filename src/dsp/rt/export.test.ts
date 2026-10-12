@@ -30,6 +30,8 @@ for (const bits of [16, 24, 32] as const) {
   it(`background shared export encodes ${bits}-bit WAV without changing source audio`, () => {
     const input = clip(), original = input.l.slice(), params = neutralParams();
     params.eqMode = "linear";
+    params.glue = { ...params.glue, enabled: true, optical: 0.8, thresholdDb: -30 };
+    params.carve = 0.7; params.carveHz = 1200;
     params.bands = params.bands.map(b => b.id === "low" ? { ...b, gainDb: 3 } : b);
     const expected = renderSharedClip(input, params);
     scope.onmessage?.({ data: { id: bits, op: "shared-export", audio: input, params, bits } });
@@ -54,10 +56,11 @@ for (const bits of [16, 24, 32] as const) {
 
 it("shared exports reject unsupported DSP, non-finite audio and integer clipping", () => {
   const input = clip(), params = neutralParams();
-  params.carve = 0.2;
+  const supportedBands = params.bands;
+  params.bands = Array.from({ length: 17 }, (_, i) => ({ ...supportedBands[0]!, id: `band-${i}` }));
   scope.onmessage?.({ data: { id: 1, op: "shared-export", audio: input, params, bits: 32 } });
   assert.match((replies.pop() as { message: string }).message, /offline renderer/);
-  params.carve = 0;
+  params.bands = supportedBands;
   input.l[1000] = NaN;
   scope.onmessage?.({ data: { id: 2, op: "shared-export", audio: input, params, bits: 32 } });
   assert.match((replies.pop() as { message: string }).message, /non-finite/);

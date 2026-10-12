@@ -66,9 +66,7 @@ describe("parity with the offline renderer", () => {
   it("rejects unsupported controls instead of silently dropping them", () => {
     const p = neutralParams();
     const e = new RealtimeEngine(SR, 128);
-    p.carve = 0.2;
-    assert.throws(() => e.setParams(p), /offline renderer/);
-    p.carve = 0; p.glue.enabled = true; p.glue.optical = 0.5;
+    p.bands = Array.from({ length: 17 }, (_, i) => ({ ...defaultBands()[0]!, id: `band-${i}` }));
     assert.throws(() => e.setParams(p), /offline renderer/);
   });
   it("matches shared minimum-phase EQ, dynamic EQ, de-ess and width", () => {

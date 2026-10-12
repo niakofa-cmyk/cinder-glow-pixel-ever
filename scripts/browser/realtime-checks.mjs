@@ -115,10 +115,44 @@ export async function checkRealtime(page, files, check) {
       await page.evaluate(() => { window.__holdSharedExports = false; });
     }
   });
-  await check("Unsupported live controls pause explicitly and rendered mode remains usable", async () => {
+  await check("Optical glue and center carve reach live output and all shared WAV formats", async () => {
+    await page.getByRole("button", { name: "Reset", exact: true }).click(); await ready(page);
     await page.getByRole("navigation", { name: "Signal chain" }).getByRole("button", { name: /Glue/ }).click();
     await page.getByRole("button", { name: "Glue off", exact: true }).click();
-    await poll(() => page.getByRole("alert").filter({ hasText: /optical glue/ }).isVisible(), "Unsupported optical model was silently ignored");
+    await page.getByRole("slider", { name: "Threshold", exact: true }).press("Home");
+    await page.getByRole("slider", { name: "Optical", exact: true }).press("End");
+    await page.getByRole("navigation", { name: "Signal chain" }).getByRole("button", { name: /Stereo/ }).click();
+    await page.getByRole("slider", { name: "Center carve", exact: true }).press("End"); await ready(page);
+    const s = await state(page);
+    assert.equal(s.params.glue.optical, 1); assert.equal(s.params.carve, 1);
+    const input = decodeWavPcm(new Uint8Array(await readFile(files.program)));
+    const expected = renderSharedClip(input, s.params);
+    for (const [name, bits] of [["Live-engine 32-float", 32], ["Live-engine 24-bit WAV", 24], ["Live-engine 16-bit WAV", 16]]) {
+      const actual = await exported(page, name);
+      let error = 0;
+      for (let i = 0; i < expected.l.length; i++) error = Math.max(error,
+        Math.abs(actual.samples[i * 2] - expected.l[i]), Math.abs(actual.samples[i * 2 + 1] - expected.r[i]));
+      assert.ok(error <= (bits === 32 ? 0 : 3 / 2 ** (bits - 1)), `${bits}: ${error}`);
+    }
+    await page.getByRole("slider", { name: "Seek position", exact: true }).press("Home");
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await poll(() => page.evaluate(() => {
+      const frame = window.__workletFrames.at(-1);
+      return frame?.playing && frame.frame > 60000 && frame.meters.glueReductionDb > 1;
+    }), "Serial glue was not measured in live DSP");
+    const actual = await signal(page);
+    assert.ok(actual.rms > 0.001 && actual.rms < 0.03, `Unexpected glued output ${actual.rms}`);
+    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    await poll(() => page.evaluate(() => !window.__workletFrames.at(-1)?.playing), "Glue audition did not pause");
+    return { optical: 1, carve: 1, formats: 3, liveRms: actual.rms };
+  });
+  await check("Unsupported live controls pause explicitly and rendered mode remains usable", async () => {
+    await page.evaluate(async () => {
+      const { useSession } = await import("/src/store/session.ts");
+      const s = useSession.getState();
+      s.setParams({ ...s.params, bands: Array.from({ length: 17 }, (_, i) => ({ ...s.params.bands[0], id: `extra-${i}` })) });
+    });
+    await poll(() => page.getByRole("alert").filter({ hasText: /16 EQ bands/ }).isVisible(), "Unsupported band count was silently ignored");
     assert.equal(await page.getByRole("button", { name: "Play", exact: true }).isDisabled(), true);
     assert.equal(await page.getByRole("button", { name: "Live-engine 32-float", exact: true }).isDisabled(), true);
     await page.getByRole("button", { name: "Live preview", exact: true }).click();

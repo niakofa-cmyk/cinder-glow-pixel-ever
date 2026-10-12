@@ -19,9 +19,24 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm test && npm run typecheck && npm run lint && npm run build
+  browsers:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Browser mastering and session regressions
         shell: bash
         run: |
@@ -38,11 +53,11 @@ jobs:
             sleep 1
           done
           if [ "$ready" != true ]; then cat generated-artifacts/server.log; exit 1; fi
-          npm run test:browser
+          npm run test:browser -- --browser=${{ matrix.browser }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mastering-browser-evidence
+          name: mastering-browser-evidence-${{ matrix.browser }}
           path: generated-artifacts/
           if-no-files-found: ignore
           retention-days: 7

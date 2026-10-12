@@ -14,12 +14,13 @@ it("unsupported messages stop playback without crashing, and valid controls reco
   const w = new Ctor();
   const send = (data: ToWorklet) => w.port.onmessage?.({ data });
   const params = neutralParams();
-  params.carve = 0.2;
+  const supportedBands = params.bands;
+  params.bands = Array.from({ length: 17 }, (_, i) => ({ ...supportedBands[0]!, id: `band-${i}` }));
   send({ type: "params", params });
   send({ type: "play" });
   assert.ok(w.port.messages.some(m => m.type === "error" && /offline renderer/.test(m.message)));
   assert.ok(w.port.messages.some(m => m.type === "error" && /Restore supported/.test(m.message)));
-  params.carve = 0;
+  params.bands = supportedBands;
   params.limiter.enabled = false;
   send({ type: "params", params });
   send({ type: "load", slot: "program", sampleRate: SR,
@@ -56,7 +57,8 @@ for (const rate of [48000, 44100]) {
             driveDb: 6, mix: 0.4, memory: 0.6, lowColor: 0.2, highColor: -0.2 };
           params.multiband.enabled = true;
           params.dynamicEq.enabled = true; params.deEss.enabled = true;
-          params.glue.enabled = true; params.glue.optical = 0;
+          params.glue.enabled = true; params.glue.optical = 0.8;
+          params.carve = 0.6; params.carveHz = 2500;
           params.transient = { enabled: true, attack: 0.2, sustain: -0.1 };
           params.width = 1.2; params.limiter.enabled = true;
           const w = new Ctor();

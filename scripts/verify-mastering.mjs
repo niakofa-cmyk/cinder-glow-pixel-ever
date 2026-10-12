@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 import { fixture, makeFixtures, wavInfo } from "./browser/fixtures.mjs";
 import { audioInstrumentation, exported, importProgram, poll, ready, state } from "./browser/harness.mjs";
 import { checkSessions } from "./browser/session-checks.mjs";
@@ -15,9 +15,13 @@ await mkdir("generated-artifacts/browser", { recursive: true });
 const dir = await mkdtemp("generated-artifacts/browser/run-");
 const files = await makeFixtures(dir);
 const dry = wavInfo(fixture());
-const browser = await chromium.launch({
-  executablePath: option("chromium", process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH),
-  headless: true, args: ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"],
+const engine = option("browser", "chromium");
+if (!["chromium", "firefox", "webkit"].includes(engine)) throw new Error(`Unsupported browser: ${engine}`);
+const browser = await ({ chromium, firefox, webkit })[engine].launch({
+  executablePath: engine === "chromium" ? option("chromium", process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) : undefined,
+  headless: true, args: engine === "chromium" ? ["--no-sandbox", "--autoplay-policy=no-user-gesture-required"] : [],
+  ...(engine === "firefox" ? { firefoxUserPrefs: { "media.autoplay.default": 0, "media.autoplay.block-webaudio": false } } : {}),
+  ...(option("library-path") ? { env: { ...process.env, LD_LIBRARY_PATH: option("library-path") } } : {}),
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, acceptDownloads: true });
 await context.addInitScript(audioInstrumentation);
@@ -45,6 +49,7 @@ async function check(name, fn) {
   ].includes(name)) return;
   if (process.argv.includes("--live-only") && ![
     "Preview and demo render", "WAV program and reference import",
+    "Optical glue and center carve reach live output and all shared WAV formats",
     "AudioWorklet produces real output, live meters and parameter updates",
     "Live pause/resume and seek preserve transport position",
     "Shared WAV exports match live-engine DSP in every phase/channel mode and format",
@@ -202,7 +207,7 @@ try {
     assert.deepEqual(errors, []); assert.deepEqual(failedRequests, []); assert.deepEqual(audioWrites, []);
   });
 } finally {
-  await writeFile(join(dir, "report.json"), JSON.stringify({ url, results, errors, failedRequests, audioWrites }, null, 2));
+  await writeFile(join(dir, "report.json"), JSON.stringify({ url, browser: engine, version: browser.version(), results, errors, failedRequests, audioWrites }, null, 2));
   await browser.close();
   console.log(`Browser evidence: ${dir}`);
 }

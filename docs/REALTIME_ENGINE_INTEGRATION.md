@@ -51,7 +51,7 @@ Live preview and established offline export are intentionally distinct:
 | Linear-phase EQ | Finite 4096-tap FIR approximation | Existing forward/backward processing |
 | Multiband crossovers | Causal streaming crossovers | Existing offline crossovers |
 | Saturation | Shared enhanced 8× model | Shared enhanced 8× model |
-| Optical glue / center carve | Pauses with an explanation | Supported |
+| Optical glue / center carve | Supported by streaming stages; shared print uses the same stages | Supported |
 | More than 16 EQ bands | Explicitly rejected | Existing offline support |
 
 Capability checks are shared by the UI and engine. No silent fallback to a different
@@ -106,7 +106,9 @@ dropout-free playback on every device, or Safari/Firefox support.
 
 ## Future work
 
-1. Implement streaming optical glue and center carve, with independent signal tests.
+1. **Completed:** streaming optical glue and center carve, with independent signal
+   tests and real Chromium playback/shared-print verification. See
+   [the enhancement and browser matrix](LIVE_GLUE_CARVE_AND_BROWSER_VERIFICATION.md).
 2. Keep shared-engine and established offline exports explicitly selectable while
    evaluating their differing FIR/crossover semantics. Extend golden-output tests
    whenever either path changes; do not replace the proven default based on UI parity.
