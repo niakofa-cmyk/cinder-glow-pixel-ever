@@ -63,5 +63,6 @@ or a guarantee of professionally optimal mastering. It does not establish
 compatibility with every browser, audio interface, speaker, codec, or mobile
 device. Long-form/high-sample-rate memory and performance limits remain to be
 benchmarked. Full-chain modes allocate more memory and must report allocation
-failures rather than silently change the selected processing. Sessions are
-in-memory; persistence across reloads was not verified or added.
+failures rather than silently change the selected processing. The initial
+verification covered in-memory sessions; local saving and its additional
+regression coverage are described in [Session and browser checks](SESSION_AND_BROWSER_CHECKS.md).

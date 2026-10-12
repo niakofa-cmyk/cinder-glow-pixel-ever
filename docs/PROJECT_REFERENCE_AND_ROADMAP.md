@@ -65,6 +65,10 @@ implemented.
 
 ### 1. Complete worker-based offline rendering UX
 
+Local save/restore/delete and maintained browser/CI regression checks have now
+been implemented. See [Session and browser checks](SESSION_AND_BROWSER_CHECKS.md)
+for controls, privacy/storage limits, commands, coverage, and remaining work.
+
 - **Implemented:** analysis and rendering run through the offline Web Worker;
   source buffers are copied before transfer, and obsolete worker results are
   ignored when newer work replaces them.

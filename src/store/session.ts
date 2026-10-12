@@ -6,6 +6,8 @@ import { neutralParams } from "@/dsp/presets";
 import { applyPatch, suggest } from "@/dsp/suggest";
 import type { Analysis, ChainParams, Clip, Finding, ProcessReport } from "@/dsp/types";
 import { create } from "zustand";
+import type { SessionSnapshot } from "./session-snapshot";
+import { readLocalSession, removeLocalSession, storageMessage, writeLocalSession } from "./session-storage";
 
 export type SourceChoice = "original" | "processed" | "reference";
 export type MonitorChoice = "full" | "mono" | "small";
@@ -28,6 +30,14 @@ type Session = {
   matchLoudness: boolean;
   targetLufs: number;
   moduleId: string;
+  savedAt: number | null;
+  storageBusy: boolean;
+  storageError: string | null;
+  storageNotice: string | null;
+  initialize: () => Promise<void>;
+  saveLocal: () => Promise<void>;
+  restoreLocal: () => Promise<void>;
+  deleteLocal: () => Promise<void>;
   loadDemo: () => void;
   loadCalibration: () => void;
   loadProgram: (name: string, audio: Clip) => void;
@@ -44,6 +54,7 @@ type Session = {
 let job = 0;
 let requestId = 0;
 let offlineWorker: Worker | null = null;
+let storageJob = 0;
 const pending = new Map<
   number,
   { resolve: (response: OfflineResponse) => void; reject: (error: Error) => void }
@@ -188,6 +199,92 @@ export const useSession = create<Session>((set, get) => ({
   matchLoudness: true,
   targetLufs: -14,
   moduleId: "eq",
+  savedAt: null,
+  storageBusy: false,
+  storageError: null,
+  storageNotice: null,
+
+  initialize: async () => {
+    if (get().program) return;
+    const id = ++storageJob;
+    const startingJob = job;
+    set({ storageBusy: true, storageError: null });
+    try {
+      const snapshot = await readLocalSession();
+      if (id !== storageJob) return;
+      set({ savedAt: snapshot?.savedAt ?? null });
+      if (startingJob !== job) return;
+      if (snapshot) {
+        restoreSnapshot(snapshot);
+      } else {
+        get().loadDemo();
+      }
+    } catch (error) {
+      if (id !== storageJob) return;
+      set({ storageError: storageMessage(error) });
+      if (startingJob === job && !get().program) get().loadDemo();
+    } finally {
+      if (id === storageJob) set({ storageBusy: false });
+    }
+  },
+
+  saveLocal: async () => {
+    const state = get();
+    if (state.storageBusy || state.busy || !state.program) return;
+    const id = ++storageJob;
+    const snapshot: SessionSnapshot = {
+      version: 1, savedAt: Date.now(), program: state.program, reference: state.reference,
+      programName: state.programName, referenceName: state.referenceName,
+      params: state.params, source: state.source, monitor: state.monitor,
+      matchLoudness: state.matchLoudness, targetLufs: state.targetLufs,
+      moduleId: state.moduleId as SessionSnapshot["moduleId"],
+    };
+    set({ storageBusy: true, storageError: null, storageNotice: null });
+    try {
+      await writeLocalSession(snapshot);
+      if (id === storageJob) set({ savedAt: snapshot.savedAt, storageNotice: "Session saved in this browser. Save again after making changes." });
+    } catch (error) {
+      if (id === storageJob) set({ storageError: storageMessage(error) });
+    } finally {
+      if (id === storageJob) set({ storageBusy: false });
+    }
+  },
+
+  restoreLocal: async () => {
+    if (get().storageBusy) return;
+    const id = ++storageJob;
+    const startingJob = job;
+    set({ storageBusy: true, storageError: null, storageNotice: null });
+    try {
+      const snapshot = await readLocalSession();
+      if (id !== storageJob) return;
+      if (startingJob !== job) {
+        set({ storageNotice: "Restore skipped because your current audio changed." });
+      } else if (snapshot) {
+        restoreSnapshot(snapshot);
+      } else {
+        set({ savedAt: null, storageNotice: "No saved session in this browser." });
+      }
+    } catch (error) {
+      if (id === storageJob) set({ storageError: storageMessage(error) });
+    } finally {
+      if (id === storageJob) set({ storageBusy: false });
+    }
+  },
+
+  deleteLocal: async () => {
+    if (get().storageBusy) return;
+    const id = ++storageJob;
+    set({ storageBusy: true, storageError: null, storageNotice: null });
+    try {
+      await removeLocalSession();
+      if (id === storageJob) set({ savedAt: null, storageNotice: "Saved session deleted. Your current audio is still open." });
+    } catch (error) {
+      if (id === storageJob) set({ storageError: storageMessage(error) });
+    } finally {
+      if (id === storageJob) set({ storageBusy: false });
+    }
+  },
 
   loadDemo: () => {
     const id = ++job;
@@ -335,6 +432,22 @@ export const useSession = create<Session>((set, get) => ({
   },
   setModule: (moduleId) => set({ moduleId }),
 }));
+
+function restoreSnapshot(snapshot: SessionSnapshot) {
+  const id = ++job;
+  terminateOfflineWorker("Processing was replaced by a restored session.");
+  useSession.setState({
+    program: snapshot.program, reference: snapshot.reference,
+    programName: snapshot.programName, referenceName: snapshot.referenceName,
+    params: snapshot.params, source: snapshot.source, monitor: snapshot.monitor,
+    matchLoudness: snapshot.matchLoudness, targetLufs: snapshot.targetLufs,
+    moduleId: snapshot.moduleId, savedAt: snapshot.savedAt,
+    analysis: null, refAnalysis: null, rendered: null, report: null, findings: [],
+    busy: "Restoring and measuring your saved session.", error: null,
+    storageNotice: "Saved session restored from this browser. Unsaved changes are not restored.",
+  });
+  void master(id, snapshot.program, snapshot.params, true);
+}
 
 export function playbackGainDb(state: {
   matchLoudness: boolean;

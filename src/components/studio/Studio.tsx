@@ -7,6 +7,7 @@ import { balanceOf, playbackGainDb, useSession, type MonitorChoice, type SourceC
 import { SpectrumPlot, Waveform } from "./Displays";
 import { Meters } from "./Meters";
 import { ModulePanel } from "./ModulePanel";
+import { SessionPanel } from "./SessionPanel";
 
 const MODULES: { id: string; name: string }[] = [
   { id: "map", name: "Signal chain" },
@@ -59,7 +60,7 @@ export function Studio() {
   const startedRef = useRef(0);
 
   useEffect(() => {
-    session.loadDemo();
+    void session.initialize();
     return () => {
       sourceRef.current?.stop();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -242,6 +243,7 @@ export function Studio() {
       </header>
 
       <main className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+        <SessionPanel onRestore={stop} />
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="h-11 rounded-md bg-surface px-3 text-sm" onClick={() => session.loadDemo()}>
             House program
