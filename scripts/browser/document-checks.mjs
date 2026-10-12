@@ -37,6 +37,24 @@ export async function checkDocumentEnhancements(page, files, check) {
     assert.equal(audit.quality.measurements.clippedSamples, 0);
     assert.ok(audit.quality.measurements.integratedLufs > audit.original.integratedLufs + 11);
     assert.ok(!("spectrumDb" in audit.original));
+    const review = audit.processingReview;
+    assert.equal(review.version, 1);
+    assert.equal(review.criteria.targetLufs, audit.targetLufs);
+    assert.equal(review.criteria.ceilingDb, audit.params.limiter.ceilingDb);
+    assert.equal(review.checks.length, 6);
+    assert.match(review.limitations.join(" "), /not a trained AI model/);
+    const reviewPanel = page.locator('[aria-label="Processing tradeoff review"]');
+    assert.equal(await reviewPanel.count(), 1);
+    assert.equal(await reviewPanel.isVisible(), true);
+    for (const item of review.checks) {
+      assert.ok((await reviewPanel.textContent()).includes(item.evidence));
+    }
+    // Check the same measured review survives report download on a phone viewport.
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+    await reviewPanel.scrollIntoViewIfNeeded();
+    assert.equal(await reviewPanel.isVisible(), true);
+    await page.setViewportSize({ width: 1440, height: 960 });
     return { maximumRestoredError: error, undoCount: (await state(page)).undoCount };
   });
   await check("Changing settings cancels verified offline export and retry succeeds", async () => {

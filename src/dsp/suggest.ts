@@ -14,6 +14,30 @@ export function suggest(analysis: Analysis, targetLufs = -14): Finding[] {
   const base = neutralParams();
   const findings: Finding[] = [];
 
+  // The analyzer floors gain-to-dB at 1e-12 (-240 dB), including exact silence.
+  if (analysis.rmsDb <= -240 && analysis.samplePeakDb <= -240) {
+    return [{
+      id: "silent",
+      title: "No measurable signal to assess",
+      evidence: "RMS and sample peak are at the analyzer's -240 dB floor. Loudness and stereo interpretation are unavailable.",
+      action: "Check the imported file and source selection before adding processing.",
+      sideEffect: "No processing proposed. EQ, width and limiting cannot create a missing recording.",
+      confidence: "high",
+      patch: null,
+    }];
+  }
+  if (!Number.isFinite(analysis.integratedLufs)) {
+    findings.push({
+      id: "loudness-unavailable",
+      title: "Integrated loudness is unavailable",
+      evidence: "The loudness gate did not yield a finite reading. Short or very quiet recordings can fall below the measurement gate.",
+      action: "Check the source and audition it. Do not infer a required gain increase from an unavailable reading.",
+      sideEffect: "Other measured findings may still apply; no loudness adjustment is proposed.",
+      confidence: "high",
+      patch: null,
+    });
+  }
+
   if (analysis.clippedSamples > 0) {
     findings.push({
       id: "clip",

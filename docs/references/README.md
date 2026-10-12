@@ -6,6 +6,21 @@ that every proposed feature is implemented.
 - [Master prompt / product vision](audio-product-vision.txt)
 - [DSP engineering requirements](audio-dsp-engineering-requirements.txt)
 - [Browser PWA architecture contract](browser-pwa-architecture-contract.txt)
+- [Cinder Glow repository audit and roadmap](cinder-glow-repository-audit-roadmap.txt)
+
+## Repository audit intake verification — 2026-10-12
+
+The supplied audit/roadmap is preserved unchanged, 13,119 bytes, SHA-256:
+
+```text
+9941c2788f37e2c742708063ea9f61937775355ba5c70baaf9241209f36d508f
+```
+
+The preserved source explicitly says its author could not inspect individual
+source files. Its repository-layout observations and six-commit count are
+historical observations, not a current verification result. Its suggestions to
+connect GitHub or upload another ZIP are not necessary for this workspace.
+See the [current code assessment, implemented changes and development prompt](../REPOSITORY_AUDIT_AND_SONIC_REVIEW.md).
 
 ## Master prompt intake verification — 2026-10-12
 

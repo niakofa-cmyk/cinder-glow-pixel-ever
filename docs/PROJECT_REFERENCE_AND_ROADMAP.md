@@ -32,6 +32,12 @@ These are the supplied source documents. They are preserved verbatim:
 1. [Product vision and comprehensive master prompt](./references/audio-product-vision.txt)
 2. [DSP and engineering requirements](./references/audio-dsp-engineering-requirements.txt)
 3. [Browser PWA architecture contract](./references/browser-pwa-architecture-contract.txt)
+4. [Cinder Glow repository audit and roadmap](./references/cinder-glow-repository-audit-roadmap.txt)
+
+The fourth reference is a historical architecture proposal, not a verified
+source-code audit. Its source was preserved byte-for-byte and assessed against
+the current implementation in
+[Repository audit and sonic review](REPOSITORY_AUDIT_AND_SONIC_REVIEW.md).
 
 The master prompt was resubmitted and verified byte-for-byte on 2026-10-12.
 See the [reference integrity index](references/README.md) and
@@ -129,6 +135,11 @@ for controls, privacy/storage limits, commands, coverage, and remaining work.
 ### 6. Add contextual AI only after measurement is dependable
 
 - Tie recommendations to measured evidence and confidence.
+- **Implemented:** encoded-output processing reviews explain sample and true-peak
+  headroom, crest-factor changes, correlation risk and movement relative to the
+  selected loudness guideline. Downloaded quality JSON includes the same review
+  shown in the interface. Silent/below-gate sources do not receive invented
+  loudness corrections. See [audit and sonic review](REPOSITORY_AUDIT_AND_SONIC_REVIEW.md).
 - Generate auditionable alternatives and compare them at matched loudness.
 - Keep automated edits reversible and user-approved.
 - Evaluate with representative recordings and qualified listening tests before
