@@ -24,7 +24,7 @@ It implements a bounded next stage of the roadmap, not every proposed system.
 | Stereo and tonal analysis | Both-channel power spectrum, correlation, mid/side energy and resonances are implemented. Mono audition and reference spectral comparison are available. Whole-track summaries can miss local problems. |
 | Loudness-matched listening | Implemented audition setting and original/processed/reference choices. Shared print deliberately excludes audition gain, monitoring and transport automation. |
 | Intelligence and recommendation provenance | `src/dsp/suggest.ts` uses deterministic measured rules, evidence, confidence, tradeoffs and user-approved parameter patches. No trained source classifier or LLM inference is used in this path. |
-| Leaving healthy material alone | Existing listen-only “No obvious technical fault” finding; now exact/floored silence and unavailable loudness have explicit explanations rather than an invented gain prescription. No mathematical rating of musical quality. |
+| Leaving healthy material alone | Existing listen-only “No obvious technical fault” finding; now exact/floored silence and unavailable loudness have explicit explanations instead of a generic no-fault statement. No mathematical rating of musical quality. |
 | Testing recommendations after processing | Actual encoded WAV measurements and before/after tables already existed. **Added here:** reproducible technical tradeoff checks and explanations in UI and JSON. |
 | Identifying vocal masking in specific choruses | Missing. A stereo master cannot reliably identify isolated guitars/vocals from these whole-track heuristics. Center carve/de-essing are signal operations, not semantic source identification. |
 | Automated multitrack mixing | Missing. The current source/reference model is stereo mastering, not independent stem routing, stem automation or instrument-specific correction. |
@@ -55,7 +55,9 @@ contextual, multitrack intelligence described as “Level 3” in the reference.
 - The GitHub workflow runs core checks before Chromium/Firefox/WebKit checks.
   Passing CI is not a listening test or proof of performance on every device.
 - No dependency, authentication, database or deployment-platform migration was
-  needed. This scoped audit is not a fresh full security certification.
+  needed. `npm audit --omit=dev --json` reported zero known advisories in
+  production dependencies. This is a registry advisory check, not a fresh full
+  source/dataflow security audit, a development-dependency audit or certification.
 
 ## 3. Implemented audio-engineering improvement
 
@@ -146,6 +148,11 @@ workstreams; do not infer them from successful DSP tests.
 - Chromium through the actual Replit proxy: all 28 checks passed, including
   review/report agreement, phone layout, actual encoded measurements, existing
   live/export mode parity and no uncaught errors/failed requests/audio uploads.
-- Hosted three-browser results are recorded after this commit's CI completes.
+- Hosted Chromium, Firefox and WebKit each passed all 28 checks, including the
+  named accessible review region, report evidence agreement, phone layout and
+  strict console/network/audio-upload audit.
+  [Passing hosted run](https://github.com/niakofa-cmyk/cinder-glow-pixel-ever/actions/runs/38301345353).
+- Production dependency advisory check reported zero known vulnerabilities;
+  source/dataflow scans and development dependencies were not included.
 - No physical listening, Apple device certification, representative musical
   classifier evaluation or long-session hardware performance claim is made.
