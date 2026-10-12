@@ -28,7 +28,17 @@ function Knob({
   const token = useRef<number | null>(null);
   const start = () => { if (token.current === null) token.current = begin(); };
   const finish = () => { if (token.current !== null) { end(token.current); token.current = null; } };
-  useEffect(() => () => { if (token.current !== null) { end(token.current); token.current = null; } }, [end]);
+  useEffect(() => {
+    const release = () => { if (token.current !== null) { end(token.current); token.current = null; } };
+    // Native thumbs manage capture. Host capture interrupts WebKit dragging.
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      release();
+    };
+  }, [end]);
   const shown = Number.isInteger(step) ? value.toFixed(0) : value.toFixed(step < 0.1 ? 2 : 1);
   return (
     <label className="flex min-w-0 flex-col gap-1">
@@ -46,10 +56,7 @@ function Knob({
         step={step}
         value={value}
         aria-label={label}
-        onPointerDown={(event) => {
-          start();
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
+        onPointerDown={start}
         onPointerUp={finish}
         onPointerCancel={finish}
         onLostPointerCapture={finish}

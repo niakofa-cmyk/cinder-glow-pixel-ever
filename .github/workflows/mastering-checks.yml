@@ -37,6 +37,13 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Provide Firefox a software audio device
+        if: matrix.browser == 'firefox'
+        run: |
+          sudo apt-get install -y pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=ci_audio rate=48000
+          pactl set-default-sink ci_audio
       - name: Browser mastering and session regressions
         shell: bash
         run: |
