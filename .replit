@@ -1,7 +1,8 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "python-base-3.13"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["patchelf"]
 
 [workflows]
 runButton = "Project"
@@ -30,3 +31,7 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 300000
